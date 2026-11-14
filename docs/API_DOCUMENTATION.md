@@ -484,6 +484,90 @@ The `ResumeParsedData` model contains the following fields:
 
 Extraction results depend on the resume's content and formatting. Fields may be null or contain empty arrays when information is not found.
 
+## 6A. Internship APIs
+
+All internship endpoints require login. Deactivated internships are visible only to administrators.
+
+| Method | Endpoint | Access | Description |
+|---|---|---|---|
+| GET | `/internships/` | User | List active internships |
+| GET | `/internships/filters` | User | Distinct domains, work modes and locations |
+| GET | `/internships/search?q=&k=` | User | Semantic search |
+| GET | `/internships/{internship_id}` | User | Internship detail |
+| POST | `/internships/` | Admin | Create an internship |
+| PATCH | `/internships/{internship_id}` | Admin | Update an internship |
+| DELETE | `/internships/{internship_id}` | Admin | Deactivate (soft delete) |
+
+### 6A.1 List Internships
+
+Query parameters (all optional): `q` (text in title, company or description), `domain`, `work_mode` (`Onsite`, `Hybrid`, `Remote`; case-insensitive), `location` (partial match), `skill` (canonical skill name, case-insensitive), `include_inactive` (admins only), `skip` (default 0), `limit` (default 20, max 100).
+
+Response:
+
+```json
+{
+  "total": 180,
+  "skip": 0,
+  "limit": 20,
+  "items": [
+    {
+      "internship_id": 1,
+      "title": "Application Security Intern",
+      "company": "Basecrest Ventures Inc",
+      "domain": "Cybersecurity",
+      "work_mode": "Onsite",
+      "location": "Pune, India",
+      "duration_weeks": 10,
+      "stipend_per_month": 8000,
+      "stipend_currency": "INR",
+      "min_education": "Pursuing M.Tech/M.E.",
+      "required_skills": ["Linux", "Networking", "Problem Solving", "SQL"],
+      "preferred_skills": ["AWS", "Docker"],
+      "skills": [{ "skill_id": 1, "name": "Linux", "category": "cloud_devops", "importance": "required" }],
+      "source": "dataset",
+      "is_active": true
+    }
+  ]
+}
+```
+
+### 6A.2 Semantic Search
+
+**Endpoint:** `GET /internships/search?q=python backend developer&k=10`
+
+- `q`: 2–500 characters. `k`: 1–50 (default 10).
+- Returns `results` ordered by `similarity` (cosine similarity, higher is closer) and `index_built_at`.
+- Results are always re-checked against PostgreSQL: inactive or deleted internships are never returned, even if the index is outdated.
+- `503` if the index has not been built, was built with a different embedding model, fails its integrity check, or the embedding model has not been downloaded.
+
+### 6A.3 Admin: Create, Update, Deactivate
+
+Create body:
+
+```json
+{
+  "title": "Backend Engineering Intern",
+  "company": "Example Labs",
+  "description": "Build REST APIs with FastAPI and PostgreSQL.",
+  "location": "Bengaluru, India",
+  "application_url": "https://example.com/apply",
+  "domain": "Software Development",
+  "work_mode": "Hybrid",
+  "duration_weeks": 12,
+  "stipend_per_month": 15000,
+  "stipend_currency": "INR",
+  "min_education": "Pursuing B.Tech/B.E.",
+  "required_skills": ["Python", "FastAPI"],
+  "preferred_skills": ["Docker"]
+}
+```
+
+- Skills are normalized with the same rules as resumes; unknown skills are kept with category `other`.
+- Validation: `work_mode` must be `Onsite`, `Hybrid` or `Remote`; `duration_weeks` 1–104; `stipend_per_month` 0–1,000,000; `stipend_currency` three capital letters; `application_url` must be http(s).
+- `PATCH` updates only the supplied fields; skill lists, when supplied, replace the existing ones.
+- `DELETE` sets `is_active = false` (`204`). The record is kept because applications and matches may refer to it.
+- Create, update and deactivate mark the index as stale; run a rebuild to refresh search.
+
 ## 7. Administration APIs
 
 All endpoints require an access token for a user with the `admin` role.
@@ -513,6 +597,26 @@ Allowed roles: `student`, `admin`.
 **Success:** `200 OK`. Response: `UserResponse`.
 
 Errors: `400` if an admin tries to remove their own admin role, `404` if the user does not exist, `422` for an unknown role.
+
+### 7.3 Search Index Status
+
+**Endpoint:** `GET /admin/index/status`
+
+Returns `built`, `built_at`, `model_name`, `model_revision`, `dimension`, `indexed_vectors`, `configured_model`, `model_matches_configuration`, `active_internships`, `document_status_counts` and `stale`.
+
+`stale` is `true` when no index exists, the model differs from the configuration, any document is `pending` or `failed`, or the index holds vectors for internships that are no longer active.
+
+### 7.4 Rebuild Search Index
+
+**Endpoint:** `POST /admin/index/rebuild`
+
+Rebuilds the FAISS index from the active internships in PostgreSQL.
+
+**Success:** `200 OK` with `indexed`, `deactivated_documents`, `built_at`, `model_name`, `dimension`.
+
+- Only one rebuild runs at a time (PostgreSQL advisory lock); a concurrent request returns `409 Conflict`.
+- The new index is written to a new file and swapped in atomically; searches keep using the previous index until the swap.
+- `503` if the embedding model has not been downloaded.
 
 ## 8. System APIs
 

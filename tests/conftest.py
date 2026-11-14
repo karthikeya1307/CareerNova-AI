@@ -163,6 +163,57 @@ def isolated_uploads(monkeypatch, tmp_path):
     return upload_dir
 
 
+class HashingEmbedder:
+    """Deterministic bag-of-words embedder for fast tests (no model)."""
+
+    def __init__(self, model_name="test-hashing", revision="test", dimension=256):
+        self.model_name = model_name
+        self.revision = revision
+        self.dimension = dimension
+        self.calls = 0
+
+    def embed(self, texts):
+        import hashlib
+        import re
+
+        import numpy as np
+
+        self.calls += 1
+        vectors = np.zeros((len(texts), self.dimension), dtype="float32")
+        for row, text_value in enumerate(texts):
+            for token in re.findall(r"[a-z0-9+#.]+", text_value.lower()):
+                digest = hashlib.sha1(token.encode()).digest()
+                vectors[row, int.from_bytes(digest[:4], "little") % self.dimension] += 1.0
+            norm = np.linalg.norm(vectors[row])
+            if norm == 0:
+                vectors[row, 0] = 1.0
+            else:
+                vectors[row] /= norm
+        return vectors
+
+
+@pytest.fixture(autouse=True)
+def isolated_index(monkeypatch, tmp_path):
+    """Each test gets its own index folder and the fast test embedder."""
+    from backend.services import embeddings, vector_index
+
+    index_path = tmp_path / "faiss_index"
+    monkeypatch.setenv("FAISS_INDEX_DIR", str(index_path))
+    vector_index.clear_cache()
+
+    embedder = HashingEmbedder()
+    embeddings.set_embedder(embedder)
+    yield index_path
+    embeddings.set_embedder(None)
+    vector_index.clear_cache()
+
+
+@pytest.fixture
+def test_embedder():
+    from backend.services import embeddings
+    return embeddings.get_embedder()
+
+
 @pytest.fixture
 def client():
     with TestClient(app) as test_client:

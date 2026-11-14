@@ -56,6 +56,10 @@ media/
 *.pkl
 *.pickle
 backend/data/faiss_index/
+.models/
+*.safetensors
+*.bin
+*.onnx
 
 # ============================================================
 # Archives and database backups / dumps

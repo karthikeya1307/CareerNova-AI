@@ -102,6 +102,11 @@ flowchart TD
 
 - D3 — Vector Index: Stores searchable text chunks and embeddings
   for Retrieval-Augmented Generation (RAG).
+  Implemented (Phase 2) as a FAISS `IndexIDMap2(IndexFlatIP)` file
+  rebuilt from PostgreSQL. It stores only vectors keyed by
+  `knowledge_documents.document_id`; all text and metadata stay in
+  PostgreSQL (D1), which is the source of truth. Embeddings come from
+  a local `all-MiniLM-L6-v2` model (384 dimensions, pinned revision).
 
 ## 4. Process Summary
 
@@ -126,5 +131,10 @@ flowchart TD
 - Uploaded files must be validated and stored privately.
 - Internship-specific answers should use reliable, relevant sources
   where available.
+- Vector search results are always filtered through PostgreSQL, so
+  inactive or deleted internships are never returned, even from an
+  outdated index.
+- Index rebuilds run one at a time (PostgreSQL advisory lock) and swap
+  in atomically; no pickle files are ever loaded.
 - This DFD represents the proposed architecture; it does not imply
   that all nine modules have already been implemented.

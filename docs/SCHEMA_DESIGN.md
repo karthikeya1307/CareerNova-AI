@@ -142,11 +142,29 @@ Backend: FastAPI (proposed architecture)
 
 \- deadline: TIMESTAMP WITH TIME ZONE, nullable
 
-\- is\_active: BOOLEAN, default TRUE
+\- is\_active: BOOLEAN, default TRUE (deactivated internships are hidden from students and from search)
 
 \- created\_at: TIMESTAMP WITH TIME ZONE
 
 \- updated\_at: TIMESTAMP WITH TIME ZONE
+
+\- Added in migration b7e3d1f4a2c8:
+
+  \- external\_id: VARCHAR(64), UNIQUE, nullable (dataset ID, used for idempotent imports)
+
+  \- domain: VARCHAR(80), nullable, indexed
+
+  \- work\_mode: VARCHAR(20), nullable, CHECK IN ('Onsite', 'Hybrid', 'Remote')
+
+  \- duration\_weeks: Integer, nullable, CHECK > 0
+
+  \- stipend\_per\_month: Integer, nullable, CHECK >= 0
+
+  \- stipend\_currency: VARCHAR(3), NOT NULL, default 'INR'
+
+  \- min\_education: VARCHAR(200), nullable
+
+  \- source: VARCHAR(30), NOT NULL, default 'manual', CHECK IN ('dataset', 'admin', 'manual')
 
 
 
@@ -156,7 +174,7 @@ Backend: FastAPI (proposed architecture)
 
 \- skill\_id: Integer, Foreign Key -> skills.skill\_id, Primary Key
 
-\- importance: VARCHAR(30), default "required"
+\- importance: VARCHAR(30), default "required", CHECK IN ('required', 'preferred') (migration b7e3d1f4a2c8)
 
 
 
@@ -181,6 +199,20 @@ Backend: FastAPI (proposed architecture)
 \- created\_at: TIMESTAMP WITH TIME ZONE
 
 \- indexed\_at: TIMESTAMP WITH TIME ZONE, nullable
+
+\- Added in migration b7e3d1f4a2c8:
+
+  \- content: TEXT, nullable (exact text that was embedded; used as RAG context)
+
+  \- embedding\_model: VARCHAR(200), nullable
+
+  \- error\_message: TEXT, nullable
+
+  \- UNIQUE (internship\_id, source\_type)
+
+\- indexing\_status values: pending, indexed, failed, inactive
+
+\- document\_id is the vector ID stored in the FAISS index. PostgreSQL is the source of truth; every search result is re-checked here.
 
 
 

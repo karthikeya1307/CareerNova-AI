@@ -338,7 +338,32 @@ class ResumeSkill(Base):
 class Internship(Base):
     __tablename__ = "internships"
 
+    __table_args__ = (
+        CheckConstraint(
+            "work_mode IN ('Onsite', 'Hybrid', 'Remote')",
+            name="ck_internships_work_mode",
+        ),
+        CheckConstraint(
+            "duration_weeks > 0",
+            name="ck_internships_duration_positive",
+        ),
+        CheckConstraint(
+            "stipend_per_month >= 0",
+            name="ck_internships_stipend_non_negative",
+        ),
+        CheckConstraint(
+            "source IN ('dataset', 'admin', 'manual')",
+            name="ck_internships_source",
+        ),
+    )
+
     internship_id: Mapped[int] = mapped_column(primary_key=True)
+
+    # Stable identifier from an external dataset (used for idempotent
+    # imports). NULL for internships created by administrators.
+    external_id: Mapped[str | None] = mapped_column(
+        String(64), unique=True
+    )
 
     title: Mapped[str] = mapped_column(
         String(200), nullable=False
@@ -354,6 +379,24 @@ class Internship(Base):
     )
     deadline: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True)
+    )
+
+    domain: Mapped[str | None] = mapped_column(String(80), index=True)
+    work_mode: Mapped[str | None] = mapped_column(String(20))
+    duration_weeks: Mapped[int | None] = mapped_column(Integer)
+    stipend_per_month: Mapped[int | None] = mapped_column(Integer)
+    stipend_currency: Mapped[str] = mapped_column(
+        String(3),
+        default="INR",
+        server_default=text("'INR'"),
+        nullable=False,
+    )
+    min_education: Mapped[str | None] = mapped_column(String(200))
+    source: Mapped[str] = mapped_column(
+        String(30),
+        default="manual",
+        server_default=text("'manual'"),
+        nullable=False,
     )
 
     is_active: Mapped[bool] = mapped_column(
@@ -417,6 +460,13 @@ class Internship(Base):
 class InternshipSkill(Base):
     __tablename__ = "internship_skills"
 
+    __table_args__ = (
+        CheckConstraint(
+            "importance IN ('required', 'preferred')",
+            name="ck_internship_skills_importance",
+        ),
+    )
+
     internship_id: Mapped[int] = mapped_column(
         ForeignKey("internships.internship_id", ondelete="CASCADE"),
         primary_key=True,
@@ -439,7 +489,21 @@ class InternshipSkill(Base):
 
 
 class KnowledgeDocument(Base):
+    """One indexed text per source (e.g. per internship).
+
+    PostgreSQL is the source of truth; ``document_id`` is the vector ID
+    stored in the FAISS index.
+    """
+
     __tablename__ = "knowledge_documents"
+
+    __table_args__ = (
+        UniqueConstraint(
+            "internship_id",
+            "source_type",
+            name="uq_knowledge_document_internship_source",
+        ),
+    )
 
     document_id: Mapped[int] = mapped_column(primary_key=True)
 
@@ -466,6 +530,11 @@ class KnowledgeDocument(Base):
     indexing_status: Mapped[str] = mapped_column(
         String(30), default="pending", nullable=False
     )
+
+    # Exact text that was embedded (used for RAG context/citations).
+    content: Mapped[str | None] = mapped_column(Text)
+    embedding_model: Mapped[str | None] = mapped_column(String(200))
+    error_message: Mapped[str | None] = mapped_column(Text)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

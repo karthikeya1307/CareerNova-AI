@@ -4,6 +4,11 @@ Usage:
     python -m backend.manage set-role <email> <role>
     python -m backend.manage backfill-skills            # dry run (default)
     python -m backend.manage backfill-skills --apply    # write changes
+    python -m backend.manage validate-internships       # no database access
+    python -m backend.manage seed-internships [--apply]
+    python -m backend.manage rebuild-index [--apply]
+    python -m backend.manage index-status
+    python -m backend.manage download-embedding-model   # one-time, network
 
 Example (bootstrap the first administrator):
     python -m backend.manage set-role admin@example.com admin
@@ -128,6 +133,110 @@ def backfill_skills(apply: bool = False) -> int:
     return 0
 
 
+def _print_validation(report) -> None:
+    print(
+        f"Records: {report.total} | valid: {len(report.valid)} | "
+        f"errors: {len(report.errors)} | duplicate ids: {len(report.duplicate_ids)}"
+    )
+    print(f"Distinct canonical skills: {report.skill_count}")
+    print(f"Unmapped skills: {report.unmapped_skills or 'none'}")
+    print(f"Stipend range (INR/month): {report.stipend_range}")
+    for error in report.errors[:20]:
+        print(f"  ERROR {error}")
+    for duplicate in report.duplicate_ids[:20]:
+        print(f"  DUPLICATE id {duplicate}")
+
+
+def validate_internships(path: str | None = None) -> int:
+    from pathlib import Path
+
+    from backend.services.internship_seed import (
+        DEFAULT_DATASET_PATH, load_dataset, validate_records,
+    )
+
+    report = validate_records(load_dataset(Path(path) if path else DEFAULT_DATASET_PATH))
+    _print_validation(report)
+    print("Dataset is valid." if report.ok else "Dataset is NOT valid.")
+    return 0 if report.ok else 1
+
+
+def seed_internships_command(apply: bool = False, path: str | None = None) -> int:
+    from pathlib import Path
+
+    from backend.services.internship_seed import (
+        DEFAULT_DATASET_PATH, load_dataset, seed_internships, validate_records,
+    )
+
+    report = validate_records(load_dataset(Path(path) if path else DEFAULT_DATASET_PATH))
+    _print_validation(report)
+    if not report.ok:
+        print("Aborted: fix the dataset errors above first. Nothing was written.")
+        return 1
+
+    mode = "APPLY" if apply else "DRY RUN (no changes written)"
+    print(f"Seed internships - {mode} - database: {SessionLocal.kw['bind'].url.database}")
+
+    with SessionLocal() as db:
+        result = seed_internships(db, report.valid, apply=apply)
+        if apply:
+            db.commit()
+        else:
+            db.rollback()
+
+    verb = "" if apply else "would be "
+    print(
+        f"Summary: {result.created} {verb}created, {result.updated} {verb}updated, "
+        f"{result.unchanged} unchanged."
+    )
+    return 0
+
+
+def rebuild_index_command(apply: bool = False) -> int:
+    from backend.services import embeddings, vector_index
+
+    database_name = SessionLocal.kw["bind"].url.database
+    if not apply:
+        with SessionLocal() as db:
+            plan = vector_index.plan_rebuild(db)
+        print(f"Rebuild index - DRY RUN - database: {database_name}")
+        print(
+            f"Would index {plan['active_internships']} active internships "
+            f"({plan['new_or_changed']} new or changed) into {vector_index.index_dir()}"
+        )
+        return 0
+
+    print(f"Rebuild index - APPLY - database: {database_name}")
+    try:
+        result = vector_index.rebuild_index(embeddings.get_embedder())
+    except vector_index.IndexBusyError as exc:
+        print(f"Not started: {exc}")
+        return 1
+    print(
+        f"Indexed {result.indexed} internships with {result.model_name} "
+        f"(dim {result.dimension}); {result.deactivated_documents} removed; "
+        f"built at {result.built_at}"
+    )
+    return 0
+
+
+def index_status_command() -> int:
+    import json
+
+    from backend.services import vector_index
+
+    with SessionLocal() as db:
+        print(json.dumps(vector_index.index_status(db), indent=2))
+    return 0
+
+
+def download_embedding_model_command() -> int:
+    from backend.services import embeddings
+
+    path = embeddings.download_model()
+    print(f"Embedding model ready (safetensors only) in: {path}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m backend.manage")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -145,7 +254,43 @@ def main(argv: list[str] | None = None) -> int:
         help="Write changes. Without this flag nothing is saved.",
     )
 
+    validate_parser = subparsers.add_parser(
+        "validate-internships", help="Validate the internship dataset (no database)"
+    )
+    validate_parser.add_argument("--file")
+
+    seed_parser = subparsers.add_parser(
+        "seed-internships", help="Import internships (dry run by default)"
+    )
+    seed_parser.add_argument("--file")
+    seed_parser.add_argument("--apply", action="store_true")
+
+    rebuild_parser = subparsers.add_parser(
+        "rebuild-index", help="Rebuild the FAISS index from PostgreSQL (dry run by default)"
+    )
+    rebuild_parser.add_argument("--apply", action="store_true")
+
+    subparsers.add_parser("index-status", help="Show search index status")
+    subparsers.add_parser(
+        "download-embedding-model", help="One-time download of the pinned model"
+    )
+
     args = parser.parse_args(argv)
+
+    if args.command == "validate-internships":
+        return validate_internships(args.file)
+
+    if args.command == "seed-internships":
+        return seed_internships_command(apply=args.apply, path=args.file)
+
+    if args.command == "rebuild-index":
+        return rebuild_index_command(apply=args.apply)
+
+    if args.command == "index-status":
+        return index_status_command()
+
+    if args.command == "download-embedding-model":
+        return download_embedding_model_command()
 
     if args.command == "set-role":
         return set_role(args.email, args.role)

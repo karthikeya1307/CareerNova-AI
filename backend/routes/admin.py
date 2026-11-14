@@ -5,7 +5,12 @@ from sqlalchemy.orm import Session
 
 from backend.database import get_db
 from backend.models import User
+from backend.schemas.internship_schema import (
+    IndexRebuildResponse,
+    IndexStatusResponse,
+)
 from backend.schemas.user_schema import RoleUpdateRequest, UserResponse
+from backend.services import embeddings, vector_index
 from backend.utils.dependencies import require_admin
 from backend.utils.roles import ROLE_ADMIN
 
@@ -78,3 +83,44 @@ def update_user_role(
     db.refresh(user)
 
     return user
+
+
+# ============================================================
+# SEARCH INDEX STATUS
+# GET /admin/index/status
+# ============================================================
+
+@router.get(
+    "/index/status",
+    response_model=IndexStatusResponse
+)
+def get_index_status(db: Session = Depends(get_db)):
+    return vector_index.index_status(db)
+
+
+# ============================================================
+# REBUILD SEARCH INDEX FROM POSTGRESQL
+# POST /admin/index/rebuild
+# ============================================================
+
+@router.post(
+    "/index/rebuild",
+    response_model=IndexRebuildResponse
+)
+def rebuild_search_index():
+    try:
+        result = vector_index.rebuild_index(embeddings.get_embedder())
+
+    except vector_index.IndexBusyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc)
+        )
+
+    except embeddings.EmbeddingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc)
+        )
+
+    return result.__dict__

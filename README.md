@@ -22,6 +22,8 @@ AI Career Companion provides two core modules:
 | Password Hashing | Argon2 |
 | Email Service | Gmail SMTP |
 | PDF Processing | pypdf |
+| Embeddings | Sentence Transformers (`all-MiniLM-L6-v2`, local, CPU) |
+| Vector Search | FAISS (`faiss-cpu`), rebuilt from PostgreSQL |
 | DOCX Processing | python-docx |
 | API Documentation | Swagger / OpenAPI |
 
@@ -36,18 +38,29 @@ AI_CAREER_COMPANION/
 │   ├── models.py
 │   ├── init_db.py
 │   ├── manage.py
+│   ├── data/
+│   │   ├── internships.json      (180 fictional postings)
+│   │   └── faiss_index/          (generated, gitignored)
 │   ├── routes/
 │   │   ├── admin.py
 │   │   ├── auth.py
+│   │   ├── internships.py
 │   │   ├── profiles.py
 │   │   └── resumes.py
 │   ├── schemas/
+│   │   ├── internship_schema.py
 │   │   ├── user_schema.py
 │   │   ├── profile_schema.py
 │   │   └── resume_schema.py
 │   ├── services/
 │   │   ├── email_service.py
-│   │   └── resume_parser.py
+│   │   ├── embeddings.py
+│   │   ├── internship_seed.py
+│   │   ├── internship_text.py
+│   │   ├── resume_parser.py
+│   │   ├── resume_skills.py
+│   │   ├── skill_normalizer.py
+│   │   └── vector_index.py
 │   └── utils/
 │       ├── security.py
 │       ├── dependencies.py
@@ -69,6 +82,7 @@ AI_CAREER_COMPANION/
 ├── uploads/
 │   └── resumes/
 │
+├── .models/                      (local embedding model, gitignored)
 ├── .env.example
 ├── .gitignore
 ├── alembic.ini
@@ -84,7 +98,7 @@ AI_CAREER_COMPANION/
 |---|---|---|
 | 0 | Project hygiene: Git, CORS, resend verification, role-based authorization, test suite | ✅ Done |
 | 1 | Module 2 completion: skill normalization, re-parse, delete, download | ✅ Implemented, 162/162 tests pass. Pending: apply migration `a1c4e2b7d9f0` and run `backfill-skills --apply` on the development database |
-| 2 | Module 3: Internship knowledge base, FAISS index rebuilt from PostgreSQL | Planned |
+| 2 | Module 3: Internship knowledge base, FAISS index rebuilt from PostgreSQL | ✅ Implemented, 235/235 tests pass (incl. all 162 earlier tests). Pending on the development database: migration `b7e3d1f4a2c8` (after `a1c4e2b7d9f0`), `seed-internships --apply`, `rebuild-index --apply` |
 | 3 | Module 4: Internship matching | Planned |
 | 4 | Module 5: Skill gap analysis | Planned |
 | 5 | Module 8: Application tracking | Planned |
@@ -165,6 +179,18 @@ To link skills to resumes uploaded before Phase 1, preview first, then apply:
 python -m backend.manage backfill-skills
 python -m backend.manage backfill-skills --apply
 ```
+
+### Internship APIs (login required)
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/internships/` | List active internships (filters: `q`, `domain`, `work_mode`, `location`, `skill`) |
+| GET | `/internships/filters` | Available filter values |
+| GET | `/internships/search?q=` | Semantic search over the FAISS index |
+| GET | `/internships/{internship_id}` | Internship detail |
+| POST / PATCH / DELETE | `/internships/...` | Admin only; DELETE deactivates (soft delete) |
+| GET | `/admin/index/status` | Admin: search index status |
+| POST | `/admin/index/rebuild` | Admin: rebuild index from PostgreSQL |
 
 ### Profile APIs
 
@@ -276,6 +302,30 @@ Do not run both setup paths on the same database without checking its current mi
 python -m uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
+### 6a. Internship knowledge base and search index
+
+PostgreSQL is the single source of truth for internships. The FAISS index stores only vectors and is rebuilt from PostgreSQL.
+
+```bash
+# One-time download of the pinned embedding model (~92 MB, safetensors only)
+python -m backend.manage download-embedding-model
+
+# Validate the bundled dataset (180 fictional postings; no database access)
+python -m backend.manage validate-internships
+
+# Import internships: dry run first, then apply
+python -m backend.manage seed-internships
+python -m backend.manage seed-internships --apply
+
+# Build the search index: dry run first, then apply
+python -m backend.manage rebuild-index
+python -m backend.manage rebuild-index --apply
+
+python -m backend.manage index-status
+```
+
+After the one-time download the model is loaded from `.models/` only (no network access) and only when first needed, never at API startup. `backend/data/internships.json` comes from the Milestone 2 reference project (SHA-256 `402a37cd…6fc1317`); its supplied pickle/FAISS files are not used.
+
 ### 7. Run the tests
 
 ```bash
@@ -307,6 +357,9 @@ Additional project documentation is available in the `docs/` directory:
 - Role-based authorization (`student`, `admin`) protects administrative endpoints.
 - CORS only admits the origins listed in `CORS_ORIGINS`.
 - Verification-link resends are throttled and do not reveal whether an account exists.
+- Semantic search results are always re-checked against PostgreSQL; inactive or deleted internships are never returned.
+- Index rebuilds run one at a time and are swapped in atomically; index files are verified by SHA-256 before loading.
+- No pickle files are downloaded or loaded (model weights are safetensors; the index is native FAISS format).
 
 - Passwords are stored as Argon2 hashes.
 - JWT access tokens have limited validity.
