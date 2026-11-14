@@ -35,7 +35,9 @@ AI_CAREER_COMPANION/
 │   ├── database.py
 │   ├── models.py
 │   ├── init_db.py
+│   ├── manage.py
 │   ├── routes/
+│   │   ├── admin.py
 │   │   ├── auth.py
 │   │   ├── profiles.py
 │   │   └── resumes.py
@@ -49,11 +51,17 @@ AI_CAREER_COMPANION/
 │   └── utils/
 │       ├── security.py
 │       ├── dependencies.py
+│       ├── roles.py
 │       └── tokens.py
 │
 ├── docs/
+│   ├── API_DOCUMENTATION.md
 │   ├── DFD.md
 │   └── SCHEMA_DESIGN.md
+│
+├── tests/
+│   ├── conftest.py
+│   └── test_*.py
 │
 ├── migrations/
 │   └── versions/
@@ -64,9 +72,27 @@ AI_CAREER_COMPANION/
 ├── .env.example
 ├── .gitignore
 ├── alembic.ini
+├── pytest.ini
 ├── requirements.txt
+├── requirements-dev.txt
 └── README.md
 ```
+
+## Implementation Status
+
+| Phase | Scope | Status |
+|---|---|---|
+| 0 | Project hygiene: Git, CORS, resend verification, role-based authorization, test suite | ✅ Done |
+| 1 | Module 2 completion: skill normalization, re-parse, delete, download | Planned |
+| 2 | Module 3: Internship knowledge base, FAISS index rebuilt from PostgreSQL | Planned |
+| 3 | Module 4: Internship matching | Planned |
+| 4 | Module 5: Skill gap analysis | Planned |
+| 5 | Module 8: Application tracking | Planned |
+| 6 | Provider-independent LLM service (Groq first) | Planned |
+| 7 | Module 6: Resume and cover letter generation | Planned |
+| 8 | Module 7: Interview preparation | Planned |
+| 9 | Module 9: Conversational career assistant | Planned |
+| 10 | React + Vite frontend, final documentation | Planned |
 
 ## Features
 
@@ -107,6 +133,7 @@ AI_CAREER_COMPANION/
 |---|---|---|
 | POST | `/auth/register` | Register a user |
 | GET | `/auth/verify-email` | Verify email |
+| POST | `/auth/resend-verification` | Resend verification link |
 | POST | `/auth/login` | Authenticate user |
 | POST | `/auth/refresh` | Refresh access token |
 | POST | `/auth/logout` | Revoke session |
@@ -124,7 +151,26 @@ AI_CAREER_COMPANION/
 | GET | `/resumes/` | List current user's resumes |
 | GET | `/resumes/{resume_id}` | Retrieve a resume and extracted data |
 
-User profile endpoints are available through the profile router. Refer to the Swagger documentation for their exact paths and schemas.
+### Profile APIs
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/profiles/` | Create current user's profile |
+| GET | `/profiles/me` | Get current user's profile |
+| PATCH | `/profiles/me` | Update current user's profile |
+
+### Administration APIs (admin role)
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/admin/users` | List users |
+| PATCH | `/admin/users/{user_id}/role` | Change a user's role |
+
+Create the first administrator from the command line:
+
+```bash
+python -m backend.manage set-role admin@example.com admin
+```
 
 ## Installation and Setup
 
@@ -174,6 +220,8 @@ Update `.env` with your own configuration:
 - Gmail SMTP username.
 - Gmail App Password.
 - Application base URL.
+- Allowed frontend origins (`CORS_ORIGINS`).
+- Test database name (`TEST_DB_NAME`, must end with `_test`).
 
 Do not commit `.env` or expose credentials publicly.
 
@@ -213,6 +261,15 @@ Do not run both setup paths on the same database without checking its current mi
 python -m uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
+### 7. Run the tests
+
+```bash
+python -m pip install -r requirements-dev.txt
+python -m pytest
+```
+
+Tests use a separate PostgreSQL database (`career_companion_test` by default), which is created automatically and rebuilt on every run. They never modify the development database, never send real email and never write to `uploads/`.
+
 ## API Documentation
 
 Once the application is running, open:
@@ -226,10 +283,15 @@ Use Swagger UI to explore endpoints, provide request data, authenticate, and exe
 
 Additional project documentation is available in the `docs/` directory:
 
+- `API_DOCUMENTATION.md` – Endpoint reference.
 - `DFD.md` – Data Flow Diagram.
 - `SCHEMA_DESIGN.md` – Database schema design.
 
 ## Security Considerations
+
+- Role-based authorization (`student`, `admin`) protects administrative endpoints.
+- CORS only admits the origins listed in `CORS_ORIGINS`.
+- Verification-link resends are throttled and do not reveal whether an account exists.
 
 - Passwords are stored as Argon2 hashes.
 - JWT access tokens have limited validity.

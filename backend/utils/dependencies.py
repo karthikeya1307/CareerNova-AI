@@ -15,6 +15,7 @@ from backend.database import get_db
 from backend.models import User, AuthSession
 
 from backend.utils.security import SECRET_KEY, ALGORITHM
+from backend.utils.roles import ROLE_ADMIN, VALID_ROLES
 
 
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -99,4 +100,41 @@ def get_current_user(
             detail="User not found"
         )
 
+    # Login already requires verification; this also protects
+    # tokens issued before an account became unverified.
+    if not user.is_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Email address is not verified"
+        )
+
     return user
+
+
+def require_roles(*allowed_roles: str):
+    """Build a dependency that only admits users with one of the roles.
+
+    Usage:
+        @router.get("/x", dependencies=[Depends(require_roles(ROLE_ADMIN))])
+        def handler(user: User = Depends(require_roles(ROLE_ADMIN))): ...
+    """
+
+    unknown = set(allowed_roles) - VALID_ROLES
+    if not allowed_roles or unknown:
+        raise ValueError(f"Invalid role configuration: {sorted(unknown)}")
+
+    def role_checker(
+        current_user: User = Depends(get_current_user)
+    ) -> User:
+        if current_user.role not in allowed_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to perform this action"
+            )
+        return current_user
+
+    return role_checker
+
+
+# Convenience dependency for admin-only endpoints.
+require_admin = require_roles(ROLE_ADMIN)

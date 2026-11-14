@@ -23,20 +23,6 @@ from backend.database import get_db
 from backend.models import (
     User,
     AuthSession,
-    EmailVerificationToken
-)
-
-from backend.schemas.user_schema import (
-    UserCreate,
-    UserResponse,
-    UserLogin,
-    TokenResponse,
-    RefreshTokenRequest,
-    UserDeleteRequest
-)
-from backend.models import (
-    User,
-    AuthSession,
     EmailVerificationToken,
     PasswordResetToken
 )
@@ -48,6 +34,7 @@ from backend.schemas.user_schema import (
     RefreshTokenRequest,
     UserDeleteRequest,
     ForgotPasswordRequest,
+    ResendVerificationRequest,
     ResetPasswordRequest,
     ChangePasswordRequest
 )
@@ -68,9 +55,14 @@ from backend.utils.tokens import (
     get_token_expiry
 )
 
-from backend.services.email_service import send_verification_email
-
 from backend.utils.dependencies import get_current_user
+
+
+# Verification links stay valid for 24 hours.
+VERIFICATION_TOKEN_EXPIRE_MINUTES = 1440
+
+# Minimum wait between verification emails for one account.
+RESEND_VERIFICATION_COOLDOWN_SECONDS = 60
 
 
 router = APIRouter(
@@ -127,7 +119,9 @@ def register_user(
         verification_record = EmailVerificationToken(
             user_id=new_user.user_id,
             token_hash=hash_token(raw_token),
-            expires_at=get_token_expiry(minutes=1440)
+            expires_at=get_token_expiry(
+                minutes=VERIFICATION_TOKEN_EXPIRE_MINUTES
+            )
         )
 
         db.add(verification_record)
@@ -222,6 +216,98 @@ def verify_email(
     return {
         "message": "Email verified successfully. You can now log in."
     }
+
+
+# ============================================================
+# RESEND VERIFICATION EMAIL
+# POST /auth/resend-verification
+# ============================================================
+
+@router.post(
+    "/resend-verification",
+    status_code=status.HTTP_200_OK
+)
+def resend_verification_email(
+    request: ResendVerificationRequest,
+    db: Session = Depends(get_db)
+):
+    # Same response for unknown, verified and unverified emails
+    # so the endpoint cannot be used to discover accounts.
+    generic_response = {
+        "message": (
+            "If an unverified account exists with this email, "
+            "a new verification link will be sent."
+        )
+    }
+
+    email = str(request.email).strip().lower()
+
+    user = db.scalar(
+        select(User).where(func.lower(User.email) == email)
+    )
+
+    if user is None or user.is_verified:
+        return generic_response
+
+    now = datetime.now(timezone.utc)
+
+    # Lock this user's outstanding tokens while replacing them.
+    outstanding_tokens = db.scalars(
+        select(EmailVerificationToken)
+        .where(
+            EmailVerificationToken.user_id == user.user_id,
+            EmailVerificationToken.used_at.is_(None)
+        )
+        .with_for_update()
+    ).all()
+
+    # Throttle: skip sending if a link was issued very recently.
+    for token_record in outstanding_tokens:
+        created_at = token_record.created_at
+
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+
+        if (now - created_at).total_seconds() < (
+            RESEND_VERIFICATION_COOLDOWN_SECONDS
+        ):
+            db.rollback()
+            return generic_response
+
+    # Invalidate older links so only the newest one works.
+    for token_record in outstanding_tokens:
+        token_record.used_at = now
+
+    raw_token = generate_secure_token()
+
+    new_record = EmailVerificationToken(
+        user_id=user.user_id,
+        token_hash=hash_token(raw_token),
+        expires_at=get_token_expiry(
+            minutes=VERIFICATION_TOKEN_EXPIRE_MINUTES
+        )
+    )
+
+    try:
+        db.add(new_record)
+        db.commit()
+
+    except Exception:
+        db.rollback()
+        raise
+
+    try:
+        send_verification_email(
+            to_email=user.email,
+            token=raw_token
+        )
+
+    except (smtplib.SMTPException, OSError, RuntimeError):
+        # The link was never delivered, so disable it.
+        new_record.used_at = datetime.now(timezone.utc)
+        db.commit()
+
+    return generic_response
 
 
 # ============================================================

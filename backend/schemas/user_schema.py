@@ -63,6 +63,7 @@ class UserResponse(BaseModel):
     phone_number: str | None
     email: EmailStr
     role: str
+    is_verified: bool
     created_at: datetime
 
 
@@ -115,6 +116,37 @@ class UserDeleteRequest(BaseModel):
 
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
+
+
+# ============================================================
+# RESEND VERIFICATION EMAIL
+# ============================================================
+
+class ResendVerificationRequest(BaseModel):
+    email: EmailStr
+
+
+# ============================================================
+# ADMIN: UPDATE USER ROLE
+# ============================================================
+
+class RoleUpdateRequest(BaseModel):
+
+    role: str = Field(min_length=1, max_length=30)
+
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, value):
+        from backend.utils.roles import VALID_ROLES
+
+        value = value.strip().lower()
+
+        if value not in VALID_ROLES:
+            raise ValueError(
+                f"Role must be one of: {', '.join(sorted(VALID_ROLES))}"
+            )
+
+        return value
 
 
 # ============================================================

@@ -28,6 +28,20 @@ The application uses:
 
 Use the latest access token after refreshing the session.
 
+### Roles
+
+Every user has a `role`. New users are `student`. Endpoints under `/admin` require the `admin` role and return `403 Forbidden` for other users. Tokens belonging to unverified accounts are rejected with `403`.
+
+Bootstrap the first administrator from the command line:
+
+```bash
+python -m backend.manage set-role admin@example.com admin
+```
+
+### CORS
+
+Browser origins allowed to call the API are configured with `CORS_ORIGINS` (comma-separated) in `.env`. The default allows the Vite dev server at `http://localhost:5173` and `http://127.0.0.1:5173`. Wildcard `*` is rejected at startup.
+
 ## 3. User Management APIs
 
 ### 3.1 Register User
@@ -59,7 +73,9 @@ Required fields:
 
 Response model: `UserResponse`
 
-Includes user ID, UUID, name, phone number, email, role, and creation timestamp. Password information is not returned.
+Includes user ID, UUID, name, phone number, email, role, verification status (`is_verified`), and creation timestamp. Password information is not returned.
+
+If the verification email cannot be sent, the account is still created and the API returns `503`. The user can request a new link with `POST /auth/resend-verification`.
 
 ### 3.2 Verify Email
 
@@ -75,7 +91,29 @@ token=<verification_token>
 
 **Success:** `200 OK`
 
-The verification token is single-use and has a limited validity period.
+The verification token is single-use and valid for 24 hours.
+
+### 3.2.1 Resend Verification Email
+
+**Endpoint:** `POST /auth/resend-verification`
+
+Sends a new verification link to an account that has not been verified yet.
+
+Request:
+
+```json
+{
+  "email": "student@example.com"
+}
+```
+
+**Success:** `200 OK`
+
+Behaviour:
+- The response is identical for unknown, verified and unverified emails, so the endpoint cannot be used to discover accounts.
+- Issuing a new link invalidates all earlier unused links for that account.
+- Requests within 60 seconds of the previous link are accepted but no new email is sent.
+- If email delivery fails, the new link is disabled immediately.
 
 ### 3.3 Login User
 
@@ -392,9 +430,39 @@ The `ResumeParsedData` model contains the following fields:
 
 Extraction results depend on the resume's content and formatting. Fields may be null or contain empty arrays when information is not found.
 
-## 7. System APIs
+## 7. Administration APIs
 
-### 7.1 Home
+All endpoints require an access token for a user with the `admin` role.
+
+### 7.1 List Users
+
+**Endpoint:** `GET /admin/users`
+
+Query parameters: `skip` (default 0), `limit` (default 50, max 200).
+
+**Success:** `200 OK`. Response: array of `UserResponse`.
+
+### 7.2 Change User Role
+
+**Endpoint:** `PATCH /admin/users/{user_id}/role`
+
+Request:
+
+```json
+{
+  "role": "admin"
+}
+```
+
+Allowed roles: `student`, `admin`.
+
+**Success:** `200 OK`. Response: `UserResponse`.
+
+Errors: `400` if an admin tries to remove their own admin role, `404` if the user does not exist, `422` for an unknown role.
+
+## 8. System APIs
+
+### 8.1 Home
 
 **Endpoint:** `GET /`
 
@@ -402,7 +470,7 @@ Returns the application's home response.
 
 **Success:** `200 OK`
 
-### 7.2 Health Check
+### 8.2 Health Check
 
 **Endpoint:** `GET /health`
 
@@ -410,20 +478,25 @@ Checks whether the application is responding.
 
 **Success:** `200 OK`
 
-## 8. HTTP Status Codes
-
-The OpenAPI specification documents the following success and validation responses:
+## 9. HTTP Status Codes
 
 | Status Code | Meaning |
 |---|---|
 | 200 | Request completed successfully |
 | 201 | Resource created successfully |
 | 204 | Request completed without a response body |
+| 400 | Invalid request or business-rule violation |
+| 401 | Missing, invalid, expired or revoked token |
+| 403 | Authenticated but not allowed (wrong role or unverified email) |
+| 404 | Resource not found or not owned by the user |
+| 409 | Conflict, such as an already registered email |
+| 413 / 415 | Uploaded file too large / unsupported type |
 | 422 | Request validation error |
+| 503 | Dependent service (database or email) unavailable |
 
 Other runtime errors may be returned by individual route handlers for authentication, authorization, missing resources, invalid files, and business-rule violations.
 
-## 9. Validation and Security
+## 10. Validation and Security
 
 - Input validation is handled through Pydantic schemas.
 - Passwords are hashed using Argon2.
@@ -435,9 +508,22 @@ Other runtime errors may be returned by individual route handlers for authentica
 - Database-backed sessions support token revocation.
 - Resume operations are restricted to the authenticated owner.
 - Uploaded files are validated before extraction.
+- Role-based authorization protects administrative endpoints.
+- CORS only admits explicitly listed origins.
 - Environment secrets must remain in `.env` and must not be committed to Git.
 
-## 10. API Testing
+## 11. API Testing
+
+### Automated tests
+
+The test suite runs against a separate database (`TEST_DB_NAME`, default `career_companion_test`, created automatically). It never touches the development database, never sends real email and never writes to `uploads/`.
+
+```bash
+python -m pip install -r requirements-dev.txt
+python -m pytest
+```
+
+### Manual testing
 
 Start the backend:
 
@@ -459,7 +545,7 @@ http://127.0.0.1:8000/openapi.json
 
 Use Swagger UI to inspect request schemas, authenticate, upload documents, and execute API operations.
 
-## 11. Related Documentation
+## 12. Related Documentation
 
 - `README.md` – Project overview and setup.
 - `DFD.md` – Data Flow Diagram.
