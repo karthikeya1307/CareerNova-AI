@@ -104,6 +104,10 @@ Backend: FastAPI (proposed architecture)
 
 \- category: VARCHAR(80), nullable
 
+\- Index uq\_skills\_name\_lower: UNIQUE on lower(name), so names are unique regardless of case (added in migration a1c4e2b7d9f0)
+
+\- Rows are shared by all resumes and internships and are never deleted when a resume is deleted. Unknown skills are stored with category "other".
+
 
 
 \### 6. resume\_skills
@@ -114,7 +118,9 @@ Backend: FastAPI (proposed architecture)
 
 \- proficiency: VARCHAR(30), nullable
 
-\- evidence: TEXT, nullable
+\- evidence: TEXT, nullable (source section and raw text, e.g. "technical\_skills: React.js")
+
+\- Rows for one resume are replaced on upload and re-parse, and deleted with that resume.
 
 
 

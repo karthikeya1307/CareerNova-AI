@@ -32,6 +32,16 @@ class ResumeParsedData(BaseModel):
     achievements: list[str] = Field(default_factory=list)
 
 
+class NormalizedSkillItem(BaseModel):
+    """A canonical skill linked to a resume."""
+
+    skill_id: int
+    name: str
+    category: str | None
+    # Parser section the skill came from, e.g. "technical_skills".
+    source: str | None = None
+
+
 class ResumeUploadResponse(BaseModel):
     """Response returned after successful resume upload and parsing."""
 
@@ -41,6 +51,10 @@ class ResumeUploadResponse(BaseModel):
     status: str
     uploaded_at: datetime
     extracted_data: ResumeParsedData
+    # Added in Phase 1 (additive; existing fields unchanged).
+    normalized_skills: list[NormalizedSkillItem] = Field(
+        default_factory=list
+    )
 
 
 class ResumeDetailResponse(BaseModel):
@@ -52,6 +66,17 @@ class ResumeDetailResponse(BaseModel):
     status: str
     uploaded_at: datetime
     extracted_data: ResumeParsedData
+    # Added in Phase 1 (additive; existing fields unchanged).
+    normalized_skills: list[NormalizedSkillItem] = Field(
+        default_factory=list
+    )
+
+
+class ResumeSkillsResponse(BaseModel):
+    """Normalized skills of one resume."""
+
+    resume_id: int
+    skills: list[NormalizedSkillItem]
 
 
 class ResumeListItem(BaseModel):

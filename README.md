@@ -83,7 +83,7 @@ AI_CAREER_COMPANION/
 | Phase | Scope | Status |
 |---|---|---|
 | 0 | Project hygiene: Git, CORS, resend verification, role-based authorization, test suite | ✅ Done |
-| 1 | Module 2 completion: skill normalization, re-parse, delete, download | Planned |
+| 1 | Module 2 completion: skill normalization, re-parse, delete, download | ✅ Implemented, 162/162 tests pass. Pending: apply migration `a1c4e2b7d9f0` and run `backfill-skills --apply` on the development database |
 | 2 | Module 3: Internship knowledge base, FAISS index rebuilt from PostgreSQL | Planned |
 | 3 | Module 4: Internship matching | Planned |
 | 4 | Module 5: Skill gap analysis | Planned |
@@ -93,6 +93,8 @@ AI_CAREER_COMPANION/
 | 8 | Module 7: Interview preparation | Planned |
 | 9 | Module 9: Conversational career assistant | Planned |
 | 10 | React + Vite frontend, final documentation | Planned |
+
+Frontend requirement recorded for Phase 10: resume deletion is permanent, so the UI must ask for explicit confirmation before calling `DELETE /resumes/{resume_id}`.
 
 ## Features
 
@@ -149,7 +151,20 @@ AI_CAREER_COMPANION/
 |---|---|---|
 | POST | `/resumes/upload` | Upload and parse a resume |
 | GET | `/resumes/` | List current user's resumes |
-| GET | `/resumes/{resume_id}` | Retrieve a resume and extracted data |
+| GET | `/resumes/{resume_id}` | Retrieve a resume, extracted data and normalized skills |
+| GET | `/resumes/{resume_id}/skills` | List the resume's normalized skills |
+| POST | `/resumes/{resume_id}/reparse` | Parse the stored file again (history is kept) |
+| GET | `/resumes/{resume_id}/download` | Download the original file |
+| DELETE | `/resumes/{resume_id}` | Permanently delete a resume and its file |
+
+Skills are normalized to canonical names (for example `React.js` → `React`, `A WS` → `AWS`). Unknown skills are kept with category `other`.
+
+To link skills to resumes uploaded before Phase 1, preview first, then apply:
+
+```bash
+python -m backend.manage backfill-skills
+python -m backend.manage backfill-skills --apply
+```
 
 ### Profile APIs
 

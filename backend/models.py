@@ -12,6 +12,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Index,
     UniqueConstraint,
     CheckConstraint,
     JSON,
@@ -296,6 +297,14 @@ class Skill(Base):
             passive_deletes=True,
         )
     )
+
+
+# Skill names are unique regardless of case ("AWS" == "aws").
+Index(
+    "uq_skills_name_lower",
+    func.lower(Skill.name),
+    unique=True,
+)
 
 
 class ResumeSkill(Base):

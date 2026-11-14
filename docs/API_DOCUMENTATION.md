@@ -402,7 +402,61 @@ Path parameter:
 
 Response model: `ResumeDetailResponse`
 
-The endpoint returns the resume metadata and `extracted_data`.
+The endpoint returns the resume metadata, `extracted_data` from the latest **successful** extraction, and `normalized_skills`.
+
+### 5.4 Normalized Skills
+
+Upload and detail responses include an additional field, `normalized_skills` (all earlier fields are unchanged):
+
+```json
+"normalized_skills": [
+  { "skill_id": 3, "name": "React", "category": "framework", "source": "technical_skills" },
+  { "skill_id": 9, "name": "Antigravity", "category": "other", "source": "technical_skills" }
+]
+```
+
+Normalization rules:
+- Known skills and aliases map to one canonical name (`React.js` → `React`, `sklearn` → `Scikit-learn`).
+- Matching ignores case, spaces and separators, which repairs PDF spacing such as `A WS` → `AWS`.
+- Proficiency words and labels (`Basic`, `Skills`) are dropped.
+- Unknown skills are kept with category `other`.
+- `source` is the parser section the skill came from.
+
+**Endpoint:** `GET /resumes/{resume_id}/skills`
+
+Returns `{ "resume_id": 1, "skills": [ ...NormalizedSkillItem ] }`.
+
+### 5.5 Re-parse Resume
+
+**Endpoint:** `POST /resumes/{resume_id}/reparse`
+
+Parses the stored file again and re-links its skills.
+
+**Success:** `200 OK`. Response: `ResumeDetailResponse`.
+
+- Every attempt adds a new row to `resume_extractions`; earlier extractions are never modified or deleted.
+- A failed attempt is stored with `status = "failed"` and an error message, returns `422`, and the last successful data stays in use.
+- `404` if the stored file is missing.
+
+### 5.6 Download Resume
+
+**Endpoint:** `GET /resumes/{resume_id}/download`
+
+Returns the original file as an attachment with its original filename (`Content-Type` is `application/pdf` or the DOCX type).
+
+The server rebuilds the file location from the owner's ID and the server-generated filename only, so a stored path can never point outside the upload directory.
+
+### 5.7 Delete Resume
+
+**Endpoint:** `DELETE /resumes/{resume_id}`
+
+**Success:** `204 No Content`.
+
+Deletion is **permanent**. It removes the resume, all its extractions, its skill links and match results, then the stored file. Shared skill records are never deleted. Generated documents that referenced the resume are kept with the reference cleared.
+
+Clients must ask the user for explicit confirmation before calling this endpoint.
+
+All resume endpoints return `404` for resumes owned by another user.
 
 ## 6. Resume Extraction Response Structure
 
