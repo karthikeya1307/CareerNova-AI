@@ -1,0 +1,97 @@
+# ============================================================
+# Environment variables and secrets
+# ============================================================
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+secrets/
+credentials*.json
+token*.json
+*.token
+
+# ============================================================
+# Python virtual environments
+# ============================================================
+.venv/
+venv/
+env/
+
+# Python cache and compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Testing and coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Type checking and linting
+.mypy_cache/
+.ruff_cache/
+
+# ============================================================
+# Uploaded resumes, generated documents and private files
+# ============================================================
+uploads/
+media/
+*.pdf
+*.docx
+*.doc
+
+# ============================================================
+# Vector indexes and ML artifacts (rebuilt from PostgreSQL)
+# ============================================================
+*.faiss
+*.pkl
+*.pickle
+backend/data/faiss_index/
+
+# ============================================================
+# Archives and database backups / dumps
+# ============================================================
+*.zip
+*.7z
+*.rar
+*.tar
+*.tar.gz
+*.tgz
+*.dump
+*.backup
+*.bak
+*.sql.gz
+*.sqlite
+*.sqlite3
+*.db
+
+# ============================================================
+# Frontend (React + Vite)
+# ============================================================
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# ============================================================
+# Logs
+# ============================================================
+*.log
+npm-debug.log*
+
+# ============================================================
+# IDE, OS and local tool settings
+# ============================================================
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+.claude/settings.local.json
