@@ -568,6 +568,76 @@ Create body:
 - `DELETE` sets `is_active = false` (`204`). The record is kept because applications and matches may refer to it.
 - Create, update and deactivate mark the index as stale; run a rebuild to refresh search.
 
+## 6B. Internship Matching APIs
+
+All endpoints require login and only work on the caller's own resumes (other resumes return `404`).
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/matches/resumes/{resume_id}?k=10&work_mode=&location=` | Run matching, save the run, return ranked results (`201`) |
+| GET | `/matches/resumes/{resume_id}` | Latest run (`404` if none yet) |
+| GET | `/matches/resumes/{resume_id}/history` | All runs, newest first |
+| GET | `/matches/runs/{run_id}` | One run |
+| GET | `/matches/resumes/{resume_id}/internships/{internship_id}` | Score one active internship on demand (not saved) |
+
+Parameters: `k` 1–50 (default 10); `work_mode` `Onsite` / `Hybrid` / `Remote`; `location` (2–150 characters) overrides the profile location for this request. `422` if the resume has no recognised skills; `409` if the resume is deleted while matching runs. The single-internship endpoint returns `404` for inactive or past-deadline internships.
+
+Each run is saved in one transaction, so a run is either stored completely or not at all; concurrent requests create separate runs. Stored runs are history: they keep showing internships that were later deactivated (with `is_active: false`).
+
+### 6B.1 How candidates are chosen
+
+FAISS nearest neighbours of the resume (at least 50) **plus** every active internship that shares a skill with the resume. Each candidate is re-checked in PostgreSQL: inactive internships and internships whose deadline has passed are excluded.
+
+### 6B.2 Score (algorithm v1)
+
+`score = 100 × (0.50·skills + 0.20·semantic + 0.15·education + 0.15·location)`, rounded to one decimal and always within 0–100.
+
+| Component | Rule |
+|---|---|
+| Skills | 0.8 × required coverage + 0.2 × preferred coverage; required only → required coverage; preferred only → 0.8 × preferred coverage (max 0.8); no skills listed → 0.5 (`not_stated`) |
+| Semantic | `clamp((cosine − 0.40) / 0.35, 0, 1)`; calibrated on the 180 postings (median unrelated pair → 0.08, median related pair → 0.63) |
+| Education | Degree **family and level** must fit: exact fit 1.0; non-CS branch where CS is preferred 0.85; any-bachelor: master 0.8 / diploma 0.2; higher level 0.7; related computing degree 0.6; right degree, other subject 0.5; lower level 0.3; unrelated field 0.1 |
+| Location | Remote 1.0; same city 1.0 (aliases such as Bangalore = Bengaluru); hybrid elsewhere 0.3; onsite elsewhere 0.0 |
+
+Missing information: student data unknown → 0.3 (`unknown`); posting does not state it → 0.5 (`not_stated`); semantic index/model unavailable, or the internship not yet indexed → 0.3 (`unavailable`, with the reason in `detail`). Weights are **not** redistributed when a component is missing: each keeps its weight with the conservative value, so missing data never inflates a score.
+
+`score_before_caps` is the sum of the components' `weighted` values; `score` equals it rounded to one decimal, unless a cap applied.
+
+Caps: no required skill matched → score ≤ 50; posting lists no skills → label ≤ Fair; any component not assessed → label ≤ Strong.
+
+Labels: Excellent ≥ 80, Strong ≥ 65, Fair ≥ 45, Weak < 45. Ties are broken by required-skill coverage, then internship ID.
+
+### 6B.3 Result item
+
+```json
+{
+  "rank": 1,
+  "score": 78.2,
+  "label": "Strong",
+  "algorithm_version": "v1",
+  "score_before_caps": 78.2,
+  "data_completeness": 1.0,
+  "required_skill_coverage": 0.75,
+  "components": [
+    { "name": "skills", "score": 0.7, "weight": 0.5, "weighted": 35.0, "status": "assessed",
+      "detail": "You have 3 of 4 required skills (Python, SQL, Git). Missing: Docker. ..." },
+    { "name": "semantic", "score": 0.66, "weight": 0.2, "weighted": 13.2, "status": "assessed", "detail": "..." },
+    { "name": "education", "score": 1.0, "weight": 0.15, "weighted": 15.0, "status": "assessed", "detail": "..." },
+    { "name": "location", "score": 1.0, "weight": 0.15, "weighted": 15.0, "status": "assessed", "detail": "..." }
+  ],
+  "matched_required_skills": ["Python", "SQL", "Git"],
+  "missing_required_skills": ["Docker"],
+  "matched_preferred_skills": ["AWS"],
+  "missing_preferred_skills": ["Linux"],
+  "missing_information": [],
+  "caps_applied": [],
+  "explanation": ["..."],
+  "internship": { "internship_id": 12, "title": "...", "company": "..." }
+}
+```
+
+Every item always contains all four components in the same order. Explanations use skills, degree category and the posting's location only; no names, emails or phone numbers.
+
 ## 7. Administration APIs
 
 All endpoints require an access token for a user with the `admin` role.

@@ -131,6 +131,12 @@ flowchart TD
 - Uploaded files must be validated and stored privately.
 - Internship-specific answers should use reliable, relevant sources
   where available.
+- Internship Matching (P4, Phase 3) combines FAISS nearest neighbours
+  with skill-overlap candidates from PostgreSQL, scores each with a
+  deterministic, explainable formula (skills 50%, semantic 20%,
+  education 15%, location 15%), and stores each request as a run in
+  `match_results`. Missing student information is scored
+  conservatively and reported, never inflating compatibility.
 - Vector search results are always filtered through PostgreSQL, so
   inactive or deleted internships are never returned, even from an
   outdated index.

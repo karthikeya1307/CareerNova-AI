@@ -8,6 +8,7 @@ from backend.database import test_connection
 from backend.routes.admin import router as admin_router
 from backend.routes.auth import router as auth_router
 from backend.routes.internships import router as internships_router
+from backend.routes.matches import router as matches_router
 from backend.routes.profiles import router as profiles_router
 from backend.routes.resumes import router as resumes_router
 
@@ -52,6 +53,7 @@ app.include_router(auth_router)
 app.include_router(profiles_router)
 app.include_router(resumes_router)
 app.include_router(internships_router)
+app.include_router(matches_router)
 app.include_router(admin_router)
 
 # Root API

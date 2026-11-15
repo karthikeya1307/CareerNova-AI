@@ -45,18 +45,23 @@ AI_CAREER_COMPANION/
 │   │   ├── admin.py
 │   │   ├── auth.py
 │   │   ├── internships.py
+│   │   ├── matches.py
 │   │   ├── profiles.py
 │   │   └── resumes.py
 │   ├── schemas/
 │   │   ├── internship_schema.py
+│   │   ├── match_schema.py
 │   │   ├── user_schema.py
 │   │   ├── profile_schema.py
 │   │   └── resume_schema.py
 │   ├── services/
+│   │   ├── candidate_profile.py
+│   │   ├── compatibility.py
 │   │   ├── email_service.py
 │   │   ├── embeddings.py
 │   │   ├── internship_seed.py
 │   │   ├── internship_text.py
+│   │   ├── matching_agent.py
 │   │   ├── resume_parser.py
 │   │   ├── resume_skills.py
 │   │   ├── skill_normalizer.py
@@ -99,7 +104,7 @@ AI_CAREER_COMPANION/
 | 0 | Project hygiene: Git, CORS, resend verification, role-based authorization, test suite | ✅ Done |
 | 1 | Module 2 completion: skill normalization, re-parse, delete, download | ✅ Implemented, 162/162 tests pass. Pending: apply migration `a1c4e2b7d9f0` and run `backfill-skills --apply` on the development database |
 | 2 | Module 3: Internship knowledge base, FAISS index rebuilt from PostgreSQL | ✅ Implemented, 235/235 tests pass (incl. all 162 earlier tests). Pending on the development database: migration `b7e3d1f4a2c8` (after `a1c4e2b7d9f0`), `seed-internships --apply`, `rebuild-index --apply` |
-| 3 | Module 4: Internship matching | Planned |
+| 3 | Module 4: Internship matching and compatibility scoring | ✅ Implemented and reviewed, 361/361 tests pass (incl. all 235 earlier tests). Pending on the development database: migration `c4f8a9e2b6d1` (after the Phase 1 and 2 migrations) |
 | 4 | Module 5: Skill gap analysis | Planned |
 | 5 | Module 8: Application tracking | Planned |
 | 6 | Provider-independent LLM service (Groq first) | Planned |
@@ -191,6 +196,18 @@ python -m backend.manage backfill-skills --apply
 | POST / PATCH / DELETE | `/internships/...` | Admin only; DELETE deactivates (soft delete) |
 | GET | `/admin/index/status` | Admin: search index status |
 | POST | `/admin/index/rebuild` | Admin: rebuild index from PostgreSQL |
+
+### Matching APIs (login required, own resumes only)
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/matches/resumes/{resume_id}` | Rank internships for a resume (`k`, `work_mode`, `location`) |
+| GET | `/matches/resumes/{resume_id}` | Latest matching run |
+| GET | `/matches/resumes/{resume_id}/history` | Past runs |
+| GET | `/matches/runs/{run_id}` | One run |
+| GET | `/matches/resumes/{resume_id}/internships/{internship_id}` | Compatibility with one internship |
+
+Scores are 0–100: skills 50%, semantic similarity 20%, education 15%, location 15%, with explanations, matched/missing skills and a data-completeness indicator. See `docs/API_DOCUMENTATION.md` section 6B.
 
 ### Profile APIs
 

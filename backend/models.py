@@ -555,7 +555,38 @@ class KnowledgeDocument(Base):
 # ============================================================
 
 class MatchResult(Base):
+    """One scored internship within a matching run.
+
+    ``score`` is the final compatibility score on a 0-100 scale.
+    Rows of one request share ``run_id``; earlier runs are kept.
+    """
+
     __tablename__ = "match_results"
+
+    __table_args__ = (
+        CheckConstraint(
+            "score >= 0 AND score <= 100",
+            name="ck_match_results_score_range",
+        ),
+        CheckConstraint(
+            "label IN ('Excellent', 'Strong', 'Fair', 'Weak')",
+            name="ck_match_results_label",
+        ),
+        CheckConstraint(
+            "data_completeness >= 0 AND data_completeness <= 1",
+            name="ck_match_results_completeness_range",
+        ),
+        UniqueConstraint(
+            "run_id",
+            "internship_id",
+            name="uq_match_results_run_internship",
+        ),
+        Index(
+            "ix_match_results_resume_created",
+            "resume_id",
+            "created_at",
+        ),
+    )
 
     match_id: Mapped[int] = mapped_column(primary_key=True)
 
@@ -577,6 +608,22 @@ class MatchResult(Base):
         Float, nullable=False
     )
     explanation: Mapped[str | None] = mapped_column(Text)
+
+    # Added in Phase 3 (all nullable: additive migration).
+    run_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), index=True
+    )
+    rank: Mapped[int | None] = mapped_column(Integer)
+    label: Mapped[str | None] = mapped_column(String(20))
+    algorithm_version: Mapped[str | None] = mapped_column(String(20))
+    skill_score: Mapped[float | None] = mapped_column(Float)
+    semantic_score: Mapped[float | None] = mapped_column(Float)
+    education_score: Mapped[float | None] = mapped_column(Float)
+    location_score: Mapped[float | None] = mapped_column(Float)
+    required_skill_coverage: Mapped[float | None] = mapped_column(Float)
+    data_completeness: Mapped[float | None] = mapped_column(Float)
+    # Full component breakdown, skills and explanation sentences.
+    breakdown: Mapped[dict[str, Any] | None] = mapped_column(JSON)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

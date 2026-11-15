@@ -226,11 +226,33 @@ Backend: FastAPI (proposed architecture)
 
 \- internship\_id: Integer, Foreign Key -> internships.internship\_id
 
-\- score: FLOAT, NOT NULL
+\- score: FLOAT, NOT NULL (final compatibility score, 0-100; CHECK 0 <= score <= 100)
 
 \- explanation: TEXT, nullable
 
 \- created\_at: TIMESTAMP WITH TIME ZONE
+
+\- Added in migration c4f8a9e2b6d1 (all nullable):
+
+  \- run\_id: UUID, indexed (rows of one matching request share it; earlier runs are kept)
+
+  \- rank: Integer
+
+  \- label: VARCHAR(20), CHECK IN ('Excellent', 'Strong', 'Fair', 'Weak')
+
+  \- algorithm\_version: VARCHAR(20) (currently "v1")
+
+  \- skill\_score, semantic\_score (NULL when unavailable), education\_score, location\_score: FLOAT, 0-1
+
+  \- required\_skill\_coverage: FLOAT, nullable
+
+  \- data\_completeness: FLOAT, CHECK 0-1 (share of weight assessed with real data)
+
+  \- breakdown: JSON (components with status, matched/missing skills, explanation, caps, run metadata)
+
+  \- UNIQUE (run\_id, internship\_id); INDEX (resume\_id, created\_at)
+
+\- Deleting a resume or user deletes its match results (ON DELETE CASCADE); internships and skills are never affected.
 
 
 

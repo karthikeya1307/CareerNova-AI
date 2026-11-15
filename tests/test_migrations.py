@@ -21,6 +21,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PRE_PHASE_1 = "5d38d7da1031"
 PHASE_1 = "a1c4e2b7d9f0"
 PHASE_2 = "b7e3d1f4a2c8"
+PHASE_3 = "c4f8a9e2b6d1"
 
 
 @pytest.fixture
@@ -48,7 +49,8 @@ def assert_no_drift(config):
 
 def test_single_linear_head(alembic_config):
     script = ScriptDirectory.from_config(alembic_config)
-    assert script.get_heads() == [PHASE_2]
+    assert script.get_heads() == [PHASE_3]
+    assert script.get_revision(PHASE_3).down_revision == PHASE_2
     assert script.get_revision(PHASE_2).down_revision == PHASE_1
     assert script.get_revision(PHASE_1).down_revision == PRE_PHASE_1
 
@@ -59,8 +61,9 @@ def test_migrations_round_trip_without_drift(alembic_config):
     command.stamp(alembic_config, "head")
     assert_no_drift(alembic_config)
 
-    # Roll back Phase 2 and Phase 1.
+    # Roll back Phase 3, Phase 2 and Phase 1.
     command.downgrade(alembic_config, PRE_PHASE_1)
+    assert "run_id" not in columns("match_results")
     assert "uq_skills_name_lower" not in indexes("skills")
     assert "external_id" not in columns("internships")
     assert "content" not in columns("knowledge_documents")
@@ -79,5 +82,13 @@ def test_migrations_round_trip_without_drift(alembic_config):
         "knowledge_documents"
     )
     assert "ix_internships_domain" in indexes("internships")
+    assert "run_id" not in columns("match_results")
+
+    # Re-apply Phase 3.
+    command.upgrade(alembic_config, PHASE_3)
+    assert {"run_id", "rank", "label", "algorithm_version", "skill_score",
+            "semantic_score", "education_score", "location_score",
+            "required_skill_coverage", "data_completeness", "breakdown"} <= columns("match_results")
+    assert {"ix_match_results_run_id", "ix_match_results_resume_created"} <= indexes("match_results")
 
     assert_no_drift(alembic_config)
