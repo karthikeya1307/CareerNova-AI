@@ -647,7 +647,47 @@ class MatchResult(Base):
 # ============================================================
 
 class SkillGapRecommendation(Base):
+    """One recommended skill for one resume (Phase 4).
+
+    Regenerating recommendations updates the existing row for the same
+    (user, resume, skill), preserving the student's progress status.
+    """
+
     __tablename__ = "skill_gap_recommendations"
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'in_progress', 'completed', 'dismissed')",
+            name="ck_skill_gap_status",
+        ),
+        CheckConstraint(
+            "gap_level IN ('identified', 'missing', 'partial')",
+            name="ck_skill_gap_level",
+        ),
+        CheckConstraint(
+            "importance IN ('required', 'preferred')",
+            name="ck_skill_gap_importance",
+        ),
+        CheckConstraint(
+            "priority_score >= 0 AND priority_score <= 100",
+            name="ck_skill_gap_priority_range",
+        ),
+        CheckConstraint(
+            "completed_via IN ('user', 'resume')",
+            name="ck_skill_gap_completed_via",
+        ),
+        UniqueConstraint(
+            "user_id",
+            "resume_id",
+            "skill_id",
+            name="uq_skill_gap_user_resume_skill",
+        ),
+        Index(
+            "ix_skill_gap_user_status",
+            "user_id",
+            "status",
+        ),
+    )
 
     recommendation_id: Mapped[int] = mapped_column(
         primary_key=True
@@ -680,6 +720,40 @@ class SkillGapRecommendation(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
+        nullable=False,
+    )
+
+    # Added in Phase 4 (additive migration).
+    resume_id: Mapped[int | None] = mapped_column(
+        ForeignKey("resumes.resume_id", ondelete="CASCADE"),
+        index=True,
+    )
+    importance: Mapped[str | None] = mapped_column(String(20))
+    priority_score: Mapped[float | None] = mapped_column(Float)
+    demand_count: Mapped[int | None] = mapped_column(Integer)
+    # Internships (ids) in the analysed set that need this skill.
+    internship_ids: Mapped[list[int] | None] = mapped_column(JSON)
+    # Candidate skills that partially cover this one: [{skill, reason}].
+    related_skills: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)
+    learning_plan: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    learning_plan_version: Mapped[str | None] = mapped_column(String(20))
+    # "match_run" or "selection"; run id when generated from a match run.
+    source: Mapped[str | None] = mapped_column(String(30))
+    source_run_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True))
+    # False when the latest analysis no longer includes this skill.
+    is_current: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        server_default=text("true"),
+        nullable=False,
+    )
+    completed_via: Mapped[str | None] = mapped_column(String(20))
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
         nullable=False,
     )
 

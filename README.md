@@ -40,6 +40,7 @@ AI_CAREER_COMPANION/
 │   ├── manage.py
 │   ├── data/
 │   │   ├── internships.json      (180 fictional postings)
+│   │   ├── learning_plans.json   (curated, versioned learning plans)
 │   │   └── faiss_index/          (generated, gitignored)
 │   ├── routes/
 │   │   ├── admin.py
@@ -47,10 +48,12 @@ AI_CAREER_COMPANION/
 │   │   ├── internships.py
 │   │   ├── matches.py
 │   │   ├── profiles.py
+│   │   ├── skill_gaps.py
 │   │   └── resumes.py
 │   ├── schemas/
 │   │   ├── internship_schema.py
 │   │   ├── match_schema.py
+│   │   ├── skill_gap_schema.py
 │   │   ├── user_schema.py
 │   │   ├── profile_schema.py
 │   │   └── resume_schema.py
@@ -61,10 +64,13 @@ AI_CAREER_COMPANION/
 │   │   ├── embeddings.py
 │   │   ├── internship_seed.py
 │   │   ├── internship_text.py
+│   │   ├── learning_plans.py
 │   │   ├── matching_agent.py
 │   │   ├── resume_parser.py
 │   │   ├── resume_skills.py
+│   │   ├── skill_gap.py
 │   │   ├── skill_normalizer.py
+│   │   ├── skill_relations.py
 │   │   └── vector_index.py
 │   └── utils/
 │       ├── security.py
@@ -106,7 +112,7 @@ AI_CAREER_COMPANION/
 | 2 | Module 3: Internship knowledge base, FAISS index rebuilt from PostgreSQL | ✅ Implemented, 235/235 tests pass (incl. all 162 earlier tests). Pending on the development database: migration `b7e3d1f4a2c8` (after `a1c4e2b7d9f0`), `seed-internships --apply`, `rebuild-index --apply` |
 | 3 | Module 4: Internship matching and compatibility scoring | ✅ Implemented and reviewed, 361/361 tests pass (incl. all 235 earlier tests). Pending on the development database: migration `c4f8a9e2b6d1` (after the Phase 1 and 2 migrations) |
 | A | RAG internship-matching assignment: validation, 10-profile evaluation, documentation (`docs/assignment/`) | ✅ Evaluated: 9/9 system checks, 50/50 results grounded, 373/373 tests pass |
-| 4 | Module 5: Skill gap analysis and recommendation | Planned |
+| 4 | Module 5: Skill gap analysis and recommendation | ✅ Implemented, 417/417 tests pass (incl. all 373 earlier tests). Pending on the development database: migration `d5a1c7e3f9b2` (after the Phase 1–3 migrations) |
 | 5 | Module 6: Resume and cover letter customization (includes the provider-independent LLM service, Groq first) | Planned |
 | 6 | Module 7: Interview preparation | Planned |
 | 7 | Module 8: Application tracking | Planned |
@@ -208,6 +214,17 @@ python -m backend.manage backfill-skills --apply
 | GET | `/matches/resumes/{resume_id}/internships/{internship_id}` | Compatibility with one internship |
 
 Scores are 0–100: skills 50%, semantic similarity 20%, education 15%, location 15%, with explanations, matched/missing skills and a data-completeness indicator. See `docs/API_DOCUMENTATION.md` section 6B.
+
+### Skill Gap APIs (login required, own data only)
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/skill-gaps/resumes/{resume_id}/internships/{internship_id}` | Matched, partially matched and missing skills for one internship, with learning plans |
+| POST | `/skill-gaps/resumes/{resume_id}` | Prioritised recommendations from the latest match run or selected internships |
+| GET | `/skill-gaps` | Your recommendations (filters: `resume_id`, `status`, `current_only`) |
+| PATCH | `/skill-gaps/{recommendation_id}` | Progress: `pending`, `in_progress`, `completed`, `dismissed` |
+
+Skills that appear on a re-parsed resume complete their recommendations automatically. Learning plans are curated in `backend/data/learning_plans.json` and contain no external links. See `docs/API_DOCUMENTATION.md` section 6C.
 
 ### Profile APIs
 

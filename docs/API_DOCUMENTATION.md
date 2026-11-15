@@ -638,6 +638,102 @@ Labels: Excellent ≥ 80, Strong ≥ 65, Fair ≥ 45, Weak < 45. Ties are broken
 
 Every item always contains all four components in the same order. Explanations use skills, degree category and the posting's location only; no names, emails or phone numbers.
 
+## 6C. Skill Gap Analysis APIs
+
+All endpoints require login and only work on the caller's own resumes and recommendations (others return `404`). Administrators have no extra access to students' recommendations.
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/skill-gaps/resumes/{resume_id}/internships/{internship_id}` | Analyse one internship (read-only) |
+| POST | `/skill-gaps/resumes/{resume_id}` | Generate or refresh saved recommendations (`201`) |
+| GET | `/skill-gaps` | List your recommendations |
+| PATCH | `/skill-gaps/{recommendation_id}` | Update progress status |
+
+### 6C.1 Skill classification
+
+Every required and preferred skill of an internship is classified as:
+- `matched`: the resume has it.
+- `partial`: missing, but the resume has a closely related canonical skill, from a curated list (for example MySQL for PostgreSQL, PyTorch for TensorFlow, AWS for Azure). The reason is returned in `related_skills`.
+- `missing`: neither.
+
+Partial matches are reported here only. They do **not** change Phase 3 compatibility scores.
+
+### 6C.2 Analyse one internship
+
+`GET /skill-gaps/resumes/{resume_id}/internships/{internship_id}` returns:
+- `summary` counts
+- `matched`, `partial` and `missing` skills
+- `learning_order`: gap skills with prerequisites first
+- `learning_plans`: a curated plan for each gap skill
+
+Returns `404` for an inactive or past-deadline internship. Nothing is saved.
+
+### 6C.3 Generate recommendations
+
+`POST /skill-gaps/resumes/{resume_id}` with an optional body:
+
+```json
+{ "internship_ids": [12, 40, 77] }
+```
+or
+```json
+{ "run_id": "<match run id>", "top_k": 5 }
+```
+
+With an empty body, the top 5 results of the resume's latest matching run are used. Rules:
+- `internship_ids`: 1–20 unique IDs; it cannot be combined with `run_id`.
+- `top_k`: 1–20.
+
+Errors:
+- `409`: no matching run yet, or none of the run's internships is still available.
+- `404`: an unknown or unavailable internship, or a run that belongs to another resume.
+- `422`: the resume has no recognised skills, or the request is invalid.
+
+Priority (algorithm `gap-v1`):
+
+```
+priority = 100 × Σ(importance × relevance × partial) / Σ relevance
+```
+
+- `importance`: required 1.0, preferred 0.5
+- `relevance`: the internship's compatibility score ÷ 100, read-only from Phase 3
+- `partial`: 0.5 for a partially matched skill, 1.0 otherwise
+
+A required, fully missing skill needed by every analysed internship scores 100. Ties are broken by required count, then demand, then name.
+
+The response contains:
+- the analysed internships with their `relevance`
+- `skipped_internship_ids`: run results that are no longer available
+- `newly_acquired_skills`
+- `learning_order`
+- `recommendations`, ordered by priority
+
+Regenerating updates existing rows and keeps their progress status. Skills that are no longer gaps are kept with `is_current: false`.
+
+### 6C.4 List and progress
+
+`GET /skill-gaps?resume_id=&status=&current_only=true`. The `status` filter accepts `pending`, `in_progress`, `completed` or `dismissed`.
+
+`PATCH /skill-gaps/{recommendation_id}` with body `{ "status": "in_progress" }`:
+
+| New status | Effect |
+|---|---|
+| `in_progress` | Sets `started_at` |
+| `completed` | Sets `completed_at` and `completed_via = "user"` |
+| `pending` | Clears the timestamps |
+| `dismissed` | Clears the completion fields |
+
+**Automatic detection:** when a resume is re-parsed (`POST /resumes/{id}/reparse`) and a recommended skill now appears on it, the open recommendation is set to `completed` with `completed_via = "resume"`.
+
+### 6C.5 Learning plans
+
+Curated plans live in `backend/data/learning_plans.json` (version `2026.11-v1`) and cover all 69 dataset skills. Each plan has:
+- a level and approximate study hours
+- prerequisites, given as canonical skill names
+- a topic outline
+
+Plans contain no external links or named courses. A skill without a curated plan gets a generic outline marked `curated: false`.
+
 ## 7. Administration APIs
 
 All endpoints require an access token for a user with the `admin` role.

@@ -45,6 +45,7 @@ from backend.services.resume_skills import (
     get_resume_skill_rows,
     sync_resume_skills
 )
+from backend.services.skill_gap import detect_acquired_skills
 
 
 logger = logging.getLogger(__name__)
@@ -564,6 +565,10 @@ def reparse_resume(
             resume.resume_id,
             parsed_data.model_dump(mode="json")
         )
+
+        # Phase 4: skills that now appear on the resume complete any
+        # open skill-gap recommendations for it (same transaction).
+        detect_acquired_skills(db, resume.resume_id)
 
         resume.status = "completed"
         db.commit()

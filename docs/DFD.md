@@ -137,6 +137,12 @@ flowchart TD
   education 15%, location 15%), and stores each request as a run in
   `match_results`. Missing student information is scored
   conservatively and reported, never inflating compatibility.
+- Skill Gap Analysis (P5, Phase 4) classifies each internship skill as
+  matched, partially matched (curated related skills) or missing,
+  prioritises gaps across the latest match run or selected internships
+  using importance and the read-only Phase 3 scores, and attaches
+  curated, link-free learning plans. Progress is tracked per skill and
+  re-parsed resumes complete recommendations automatically.
 - Vector search results are always filtered through PostgreSQL, so
   inactive or deleted internships are never returned, even from an
   outdated index.

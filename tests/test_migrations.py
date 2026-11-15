@@ -22,6 +22,7 @@ PRE_PHASE_1 = "5d38d7da1031"
 PHASE_1 = "a1c4e2b7d9f0"
 PHASE_2 = "b7e3d1f4a2c8"
 PHASE_3 = "c4f8a9e2b6d1"
+PHASE_4 = "d5a1c7e3f9b2"
 
 
 @pytest.fixture
@@ -49,7 +50,8 @@ def assert_no_drift(config):
 
 def test_single_linear_head(alembic_config):
     script = ScriptDirectory.from_config(alembic_config)
-    assert script.get_heads() == [PHASE_3]
+    assert script.get_heads() == [PHASE_4]
+    assert script.get_revision(PHASE_4).down_revision == PHASE_3
     assert script.get_revision(PHASE_3).down_revision == PHASE_2
     assert script.get_revision(PHASE_2).down_revision == PHASE_1
     assert script.get_revision(PHASE_1).down_revision == PRE_PHASE_1
@@ -61,9 +63,10 @@ def test_migrations_round_trip_without_drift(alembic_config):
     command.stamp(alembic_config, "head")
     assert_no_drift(alembic_config)
 
-    # Roll back Phase 3, Phase 2 and Phase 1.
+    # Roll back Phase 4, Phase 3, Phase 2 and Phase 1.
     command.downgrade(alembic_config, PRE_PHASE_1)
     assert "run_id" not in columns("match_results")
+    assert "resume_id" not in columns("skill_gap_recommendations")
     assert "uq_skills_name_lower" not in indexes("skills")
     assert "external_id" not in columns("internships")
     assert "content" not in columns("knowledge_documents")
@@ -90,5 +93,21 @@ def test_migrations_round_trip_without_drift(alembic_config):
             "semantic_score", "education_score", "location_score",
             "required_skill_coverage", "data_completeness", "breakdown"} <= columns("match_results")
     assert {"ix_match_results_run_id", "ix_match_results_resume_created"} <= indexes("match_results")
+    assert "resume_id" not in columns("skill_gap_recommendations")
+
+    # Re-apply Phase 4.
+    command.upgrade(alembic_config, PHASE_4)
+    assert {"resume_id", "importance", "priority_score", "demand_count", "internship_ids",
+            "related_skills", "learning_plan", "learning_plan_version", "source",
+            "source_run_id", "is_current", "completed_via", "started_at", "completed_at",
+            "updated_at"} <= columns("skill_gap_recommendations")
+    assert {"ix_skill_gap_recommendations_resume_id", "ix_skill_gap_user_status"} <= indexes(
+        "skill_gap_recommendations")
+
+    # Phase 4 downgrade and upgrade again.
+    command.downgrade(alembic_config, PHASE_3)
+    assert "priority_score" not in columns("skill_gap_recommendations")
+    command.upgrade(alembic_config, "head")
+    assert "priority_score" in columns("skill_gap_recommendations")
 
     assert_no_drift(alembic_config)

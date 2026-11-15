@@ -266,13 +266,39 @@ Backend: FastAPI (proposed architecture)
 
 \- internship\_id: Integer, Foreign Key -> internships.internship\_id, nullable
 
-\- gap\_level: VARCHAR(30), default "identified"
+\- gap\_level: VARCHAR(30), default "identified", CHECK IN ('identified', 'missing', 'partial')
 
 \- recommended\_action: TEXT, NOT NULL
 
-\- status: VARCHAR(30), default "pending"
+\- status: VARCHAR(30), default "pending", CHECK IN ('pending', 'in\_progress', 'completed', 'dismissed')
 
 \- created\_at: TIMESTAMP WITH TIME ZONE
+
+\- Added in migration d5a1c7e3f9b2 (Phase 4, additive):
+
+  \- resume\_id: Integer, Foreign Key -> resumes.resume\_id (ON DELETE CASCADE), nullable, indexed
+
+  \- importance: VARCHAR(20), CHECK IN ('required', 'preferred')
+
+  \- priority\_score: FLOAT, CHECK 0-100
+
+  \- demand\_count: Integer; internship\_ids: JSON (internships that need the skill)
+
+  \- related\_skills: JSON (candidate skills that partially cover it)
+
+  \- learning\_plan: JSON; learning\_plan\_version: VARCHAR(20)
+
+  \- source: VARCHAR(30) ('match\_run' or 'selection'); source\_run\_id: UUID
+
+  \- is\_current: BOOLEAN NOT NULL default TRUE (false when the latest analysis no longer includes the skill)
+
+  \- completed\_via: VARCHAR(20), CHECK IN ('user', 'resume'); started\_at, completed\_at: TIMESTAMP WITH TIME ZONE
+
+  \- updated\_at: TIMESTAMP WITH TIME ZONE NOT NULL default now()
+
+  \- UNIQUE (user\_id, resume\_id, skill\_id); INDEX (user\_id, status)
+
+\- Regenerating recommendations updates the existing row for the same skill and preserves its progress status.
 
 
 
