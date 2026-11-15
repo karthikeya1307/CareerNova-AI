@@ -105,15 +105,15 @@ AI_CAREER_COMPANION/
 | 1 | Module 2 completion: skill normalization, re-parse, delete, download | ✅ Implemented, 162/162 tests pass. Pending: apply migration `a1c4e2b7d9f0` and run `backfill-skills --apply` on the development database |
 | 2 | Module 3: Internship knowledge base, FAISS index rebuilt from PostgreSQL | ✅ Implemented, 235/235 tests pass (incl. all 162 earlier tests). Pending on the development database: migration `b7e3d1f4a2c8` (after `a1c4e2b7d9f0`), `seed-internships --apply`, `rebuild-index --apply` |
 | 3 | Module 4: Internship matching and compatibility scoring | ✅ Implemented and reviewed, 361/361 tests pass (incl. all 235 earlier tests). Pending on the development database: migration `c4f8a9e2b6d1` (after the Phase 1 and 2 migrations) |
-| 4 | Module 5: Skill gap analysis | Planned |
-| 5 | Module 8: Application tracking | Planned |
-| 6 | Provider-independent LLM service (Groq first) | Planned |
-| 7 | Module 6: Resume and cover letter generation | Planned |
-| 8 | Module 7: Interview preparation | Planned |
-| 9 | Module 9: Conversational career assistant | Planned |
-| 10 | React + Vite frontend, final documentation | Planned |
+| A | RAG internship-matching assignment: validation, 10-profile evaluation, documentation (`docs/assignment/`) | ✅ Evaluated: 9/9 system checks, 50/50 results grounded, 373/373 tests pass |
+| 4 | Module 5: Skill gap analysis and recommendation | Planned |
+| 5 | Module 6: Resume and cover letter customization (includes the provider-independent LLM service, Groq first) | Planned |
+| 6 | Module 7: Interview preparation | Planned |
+| 7 | Module 8: Application tracking | Planned |
+| 8 | Module 9: Conversational career assistant | Planned |
+| 9 | React + Vite frontend, full integration, final documentation | Planned |
 
-Frontend requirement recorded for Phase 10: resume deletion is permanent, so the UI must ask for explicit confirmation before calling `DELETE /resumes/{resume_id}`.
+Frontend requirement recorded for Phase 9: resume deletion is permanent, so the UI must ask for explicit confirmation before calling `DELETE /resumes/{resume_id}`.
 
 ## Features
 
@@ -368,6 +368,7 @@ Additional project documentation is available in the `docs/` directory:
 - `API_DOCUMENTATION.md` – Endpoint reference.
 - `DFD.md` – Data Flow Diagram.
 - `SCHEMA_DESIGN.md` – Database schema design.
+- `assignment/` – RAG internship-matching assignment: report, architecture, methodology, test cases and actual evaluation results (reproduce with `python -m evaluation.rag_evaluation`, which uses the test database only).
 
 ## Security Considerations
 
