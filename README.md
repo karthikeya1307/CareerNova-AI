@@ -47,6 +47,7 @@ AI_CAREER_COMPANION/
 │   │   └── faiss_index/          (generated, gitignored)
 │   ├── routes/
 │   │   ├── admin.py
+│   │   ├── applications.py
 │   │   ├── auth.py
 │   │   ├── documents.py
 │   │   ├── internships.py
@@ -56,6 +57,7 @@ AI_CAREER_COMPANION/
 │   │   ├── skill_gaps.py
 │   │   └── resumes.py
 │   ├── schemas/
+│   │   ├── application_schema.py
 │   │   ├── document_schema.py
 │   │   ├── internship_schema.py
 │   │   ├── interview_schema.py
@@ -73,6 +75,8 @@ AI_CAREER_COMPANION/
 │   │   ├── document_common.py
 │   │   ├── document_renderer.py
 │   │   ├── documents_service.py
+│   │   ├── application_dashboard.py
+│   │   ├── application_service.py
 │   │   ├── email_service.py
 │   │   ├── embeddings.py
 │   │   ├── fact_base.py
@@ -136,7 +140,7 @@ AI_CAREER_COMPANION/
 | 4 | Module 5: Skill gap analysis and recommendation | ✅ Implemented, 417/417 tests pass (incl. all 373 earlier tests). Pending on the development database: migration `d5a1c7e3f9b2` (after the Phase 1–3 migrations) |
 | 5 | Module 6: Resume and cover letter customization (includes the provider-independent LLM service, Groq first) | ✅ Implemented, 489/489 tests pass (incl. all 417 earlier tests); LLM writing off by default. Pending on the development database: migration `e7b2d4f6a8c1` (after the Phase 1–4 migrations) |
 | 6 | Module 7: Interview preparation | ✅ Implemented — see the Phase 6 report. Pending on the development database: migration `f3c9e1a5b7d2` (after the Phase 1–5 migrations) |
-| 7 | Module 8: Application tracking | Planned |
+| 7 | Module 8: Application tracking | ✅ Implemented — see the Phase 7 report. Pending on the development database: migration `a9d3f6b2c8e4` (after the Phase 1–6 migrations) |
 | 8 | Module 9: Conversational career assistant | Planned |
 | 9 | React + Vite frontend, full integration, final documentation | Planned |
 
@@ -276,6 +280,29 @@ Generation is deterministic by default and uses only facts from the student's ow
 | GET | `/interviews/progress` | Progress over time |
 
 Questions come from a curated bank: 207 technical questions covering all 69 dataset skills, plus 12 behavioral. Project questions are grounded in the student's own resume facts and internship questions in the internship record. Answers are scored with deterministic rubrics and optional local semantic matching (calibrated against vague and off-topic answers). Technical scores measure **key-point coverage, not verified correctness**. Curated checks for common wrong statements (143 questions across 61 skills), "I don't know" detection, keyword-list detection and a STAR story check stop inflated scores. AI feedback is opt-in per answer: names, contact details, addresses and PIN codes are removed before anything is sent, and a final check blocks the request if any remain. See `docs/API_DOCUMENTATION.md` section 6E.
+
+### Application Tracking APIs (login required, own data only)
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/applications/dashboard` | Counts, rates, upcoming interviews, reminders, recent activity |
+| POST / GET / DELETE | `/applications/bookmarks/{internship_id}` | Save an internship (repeat-safe) / is it saved? / remove |
+| GET | `/applications/bookmarks` | Saved internships |
+| POST / GET | `/applications` | Record an application (knowledge-base internship or external) / filter, search, sort, page |
+| GET / PATCH | `/applications/{id}` | Detail (with Phase 3/5/6 links) / edit details |
+| DELETE | `/applications/{id}?confirm=true` | Move to the trash (restorable) |
+| GET | `/applications/trash` | Trashed applications |
+| POST | `/applications/{id}/restore` | Restore from the trash |
+| DELETE | `/applications/{id}/permanent?confirm=true` | Delete a trashed application and everything related, permanently |
+| PATCH | `/applications/{id}/status` | Change status (validated rules, corrections, history) |
+| GET | `/applications/{id}/history` | Status history and activity feed |
+| POST / GET | `/applications/{id}/interviews` | Add / list interview rounds |
+| GET / PATCH / DELETE | `/applications/interviews/{interview_id}` | Interview round |
+| POST | `/applications/{id}/reminders` | Add a follow-up reminder |
+| GET | `/applications/reminders` | Reminders (pending/completed/all, by application, due dates, overdue) |
+| PATCH / DELETE | `/applications/reminders/{reminder_id}` | Edit, complete or delete a reminder |
+
+Applications move through `SAVED -> APPLIED -> SHORTLISTED / INTERVIEW_SCHEDULED -> SELECTED / REJECTED`, with `WITHDRAWN` available along the way; every real change is recorded. Adding an interview round moves `APPLIED`/`SHORTLISTED` to `INTERVIEW_SCHEDULED`, and cancelling or deleting every round moves it back. Reminders are **stored only**: no e-mail or SMS is sent. All Phase 7 timestamps must include a timezone offset (for example `+05:30` for IST) and are returned in UTC (`...Z`). See `docs/API_DOCUMENTATION.md` section 6F.
 
 ### Profile APIs
 

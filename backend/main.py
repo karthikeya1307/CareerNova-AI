@@ -10,6 +10,7 @@ from backend.routes.auth import router as auth_router
 from backend.routes.documents import router as documents_router
 from backend.routes.internships import router as internships_router
 from backend.routes.interviews import router as interviews_router
+from backend.routes.applications import router as applications_router
 from backend.routes.matches import router as matches_router
 from backend.routes.skill_gaps import router as skill_gaps_router
 from backend.routes.profiles import router as profiles_router
@@ -60,6 +61,7 @@ app.include_router(matches_router)
 app.include_router(skill_gaps_router)
 app.include_router(documents_router)
 app.include_router(interviews_router)
+app.include_router(applications_router)
 app.include_router(admin_router)
 
 # Root API

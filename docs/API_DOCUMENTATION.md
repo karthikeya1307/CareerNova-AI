@@ -936,6 +936,158 @@ Each attempt is stored (`attempt` 1, 2, …). The question shows the latest one.
 - `retry_improvement`: the average change from first to last attempt
 - the last 10 completed session scores
 
+## 6F. Application Tracking APIs (Phase 7)
+
+All endpoints require login and only ever return the caller's own records: another student's id returns `404`. The student id always comes from the access token; request bodies reject unknown fields (`422`), so `user_id` cannot be supplied. Nothing in this module calls an AI provider.
+
+**Timestamps.** Every incoming timestamp must include a UTC offset, e.g. `2026-11-20T10:30:00+05:30` (India Standard Time) or `2026-11-20T05:00:00Z`; values without one are rejected with `422`. Timestamps are stored in UTC and every Phase 7 response returns UTC ISO 8601 ending in `Z` (the frontend converts to local time). Date filters (`applied_from`, `due_to`, ...) also need an offset, so the frontend sends the student's local day boundaries.
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/applications/dashboard` | Dashboard (6F.7) |
+| POST | `/applications/bookmarks/{internship_id}` | Save: `201` created, `200` if already saved |
+| GET | `/applications/bookmarks?skip=&limit=` | Saved internships (`{total, skip, limit, items}`) |
+| GET | `/applications/bookmarks/{internship_id}` | `{saved: bool, bookmark}` (always `200`) |
+| DELETE | `/applications/bookmarks/{internship_id}` | `204`, `404` if not saved |
+| POST | `/applications` | Create (`201`) |
+| GET | `/applications` | List with filters, search, sorting, paging |
+| GET | `/applications/{id}` | Detail, including `related` links |
+| PATCH | `/applications/{id}` | Edit details (not status) |
+| DELETE | `/applications/{id}?confirm=true` | Move to the trash (`204`); `422` without `confirm=true` |
+| GET | `/applications/trash` | Trashed applications |
+| POST | `/applications/{id}/restore` | Restore (`409` if not trashed or an active duplicate exists) |
+| DELETE | `/applications/{id}/permanent?confirm=true` | Permanently delete a trashed application with ALL its history, interview rounds, reminders and activity (`409` if not in the trash) |
+| PATCH | `/applications/{id}/status` | Change status |
+| GET | `/applications/{id}/history` | `{status_history, activity}` |
+| POST / GET | `/applications/{id}/interviews` | Add (`201`) / list rounds |
+| GET / PATCH / DELETE | `/applications/interviews/{interview_id}` | Round detail / edit / delete (`{deleted, status_change}`) |
+| POST | `/applications/{id}/reminders` | Add a reminder (`201`) |
+| GET | `/applications/reminders` | List reminders |
+| PATCH / DELETE | `/applications/reminders/{reminder_id}` | Edit or complete / delete (`204`) |
+
+### 6F.1 Bookmarks
+
+Only active internships whose deadline has not passed can be saved (`404` otherwise). Each item includes an internship summary (`title`, `company`, `location`, `work_mode`, `domain`, `deadline`, `is_active`, `deadline_passed`) and `application_id` if the student has already applied. Full details stay at `GET /internships/{id}`. Bookmarks are separate from the `SAVED` status: saving does not create an application.
+
+### 6F.2 Applications
+
+Internal (from the knowledge base):
+
+```json
+{ "internship_id": 12, "status": "APPLIED", "applied_at": "2026-11-10T11:00:00+05:30",
+  "notes": "Applied with the tailored resume", "resume_document_id": 7, "cover_letter_document_id": 8 }
+```
+
+Company, title, URL, domain, location and work mode are copied from the internship (sending them returns `422`). The internship must be active; a passed deadline is allowed (so late-recorded submissions can be logged) and shown as `deadline_passed: true` (computed from the deadline alone, also for inactive internships).
+
+External (found elsewhere):
+
+```json
+{ "company_name": "Acme Robotics", "title": "Software Intern", "application_url": "https://jobs.acme.example/42",
+  "external_reference": "REQ-1001", "location": "Pune", "work_mode": "Hybrid", "domain": "Robotics",
+  "contact_name": "Hiring team", "contact_email": "careers@acme.example", "status": "SAVED" }
+```
+
+Filters: a start after its end (`applied_from`/`applied_to`, `created_from`/`created_to`, `due_from`/`due_to`) or a blank `q`/`company`/`domain` returns `422`. A write that fails because related data changed at the same moment returns `409` with a generic message; only real duplicates return the duplicate message.
+
+Validation: `status` is `SAVED` or `APPLIED` at creation (default `SAVED`); `applied_at` only with `APPLIED`, between 2000-01-01 and now (defaults to now); URLs must be `http://` or `https://`; e-mail addresses are validated; text limits: company/title 200, location 150, domain 80, reference 100, contact name 120, notes 5,000. Linked documents must be the student's own Phase 5 resume / cover letter. Per-student caps: 1,000 applications, 1,000 bookmarks, 20 rounds and 100 reminders per application.
+
+**Duplicate prevention.**
+
+| Case | Rule |
+|---|---|
+| Internal | One active application per internship (`409` with the existing `application_id`) |
+| External with URL | Same *normalised* URL is a duplicate (`409`): scheme, host case and `www.` ignored, fragment and trailing slash removed, tracking parameters (`utm_*`, `ref`, `source`, `gclid`, `fbclid`, `trk`, `referrer`, `src`) removed; path and other query parameters kept, so different openings stay distinct |
+| External with reference | Same company (case and spacing ignored) + same `external_reference` is a duplicate (`409`) |
+| Neither | Never blocked; the response lists `possible_duplicates` (same company and title) so the frontend can ask |
+
+Trashed applications are ignored by all duplicate rules.
+
+`PATCH /applications/{id}` edits details only (`status` returns `422`). For internal applications company, title, URL and reference come from the internship and cannot be edited. Only fields that really change are recorded in the activity feed, as field NAMES.
+
+**List filters:** `status` (repeatable), `source` (`internal`/`external`), `company` (contains), `domain` (exact, case-insensitive), `q` (title or company contains; `%` and `_` are literal), `applied_from`/`applied_to`, `created_from`/`created_to`; `sort` = `created_at`, `updated_at` (default), `applied_at`, `company_name`, `title` or `status`; `order` = `asc`/`desc` (empty values last); `skip`, `limit` (1-100, default 20).
+
+**Detail extras:** `interview_count`, `next_interview`, `pending_reminders`, `next_reminder`, `internship_active`, `deadline_passed` and `related`: the student's latest Phase 3 match score for this internship (read-only), the linked Phase 5 documents, up to five Phase 6 practice sessions for the same internship, and `prepare_with` (`POST /interviews/sessions` with the internship id).
+
+**Deletion.** `DELETE ...?confirm=true` moves the application to the trash: it disappears from lists, the dashboard, reminders and every other endpoint, but its history, rounds and reminders are kept and `POST .../restore` brings everything back. `DELETE .../permanent?confirm=true` (trashed applications only) removes the application and all related records for good. There is no automatic purge: trashed items stay until deleted permanently or the account is deleted. Deleting the account deletes everything.
+
+### 6F.3 Status rules
+
+`PATCH /applications/{id}/status` with `{ "status": "SHORTLISTED", "correction": false, "expected_status": "APPLIED" }`.
+
+| From | Allowed |
+|---|---|
+| `SAVED` | `APPLIED`, `WITHDRAWN` |
+| `APPLIED` | `SHORTLISTED`, `INTERVIEW_SCHEDULED`, `SELECTED`, `REJECTED`, `WITHDRAWN` |
+| `SHORTLISTED` | `INTERVIEW_SCHEDULED`, `SELECTED`, `REJECTED`, `WITHDRAWN` |
+| `INTERVIEW_SCHEDULED` | `SHORTLISTED`, `SELECTED`, `REJECTED`, `WITHDRAWN` |
+| `SELECTED` | `WITHDRAWN` (offer declined) |
+| `REJECTED`, `WITHDRAWN` | none |
+
+* Same status: `200` with `changed: false`; no history entry.
+* Not allowed: `409` listing the allowed values. Unknown values: `422`.
+* `correction: true` undoes the last change only (the new status must be the previous one); it can reopen a final status and is recorded as `correction`. Correcting back to `SAVED` clears `applied_at`.
+* `applied_at` is set the first time the application moves past `SAVED` (except `SAVED -> WITHDRAWN`), unless the student entered a date.
+* `expected_status` that no longer matches returns `409` (protects against stale browser tabs).
+* Each change (application, history, activity) is one transaction; the application row is locked, so concurrent changes are applied one after the other.
+
+Response: `{ "changed": true, "from_status": "APPLIED", "to_status": "SHORTLISTED", "application": {...}, "warnings": [] }`. `warnings` notes pending interview rounds left outside the interview stage (for example after a correction). History `change_type` values: `created`, `manual`, `correction`, `interview_added`, `interview_cancelled`, `migrated`.
+
+### 6F.4 Interview rounds
+
+```json
+{ "interview_type": "technical", "mode": "online", "scheduled_at": "2026-12-01T10:00:00+05:30",
+  "duration_minutes": 45, "meeting_url": "https://meet.example/abc", "preparation_notes": "Revise joins",
+  "outcome": "pending", "interview_session_id": 31 }
+```
+
+Types: `technical`, `hr`, `behavioral`, `managerial`, `case_study`, `assignment`, `group`, `other`. Modes: `online`, `offline`, `phone`. Outcomes: `pending` (default), `passed`, `failed`, `cancelled`, `no_show`. Rounds are numbered automatically. `scheduled_at` must be within two years of today; `duration_minutes` 5-600; meeting URL `http(s)` only.
+
+* Rounds can be added once the application is submitted (`APPLIED`, `SHORTLISTED`, `INTERVIEW_SCHEDULED`, `SELECTED`, `REJECTED`); `SAVED`/`WITHDRAWN` return `409`.
+* **Status consistency:** adding a non-cancelled round (or un-cancelling one) moves `APPLIED`/`SHORTLISTED` to `INTERVIEW_SCHEDULED`; recording a round that is already cancelled never changes the status. When an existing round is cancelled or deleted and no remaining round is pending or took place (`passed`, `failed`, `no_show`), an `INTERVIEW_SCHEDULED` application returns to the last `APPLIED` or `SHORTLISTED` status before the interview stage (corrections and detours are skipped; `APPLIED` if none). `SELECTED`, `REJECTED` and `WITHDRAWN` are never changed automatically. Rescheduling never changes the status. Responses include `status_change` (`{from_status, to_status, reason}` or `null`).
+* **Phase 6:** `interview_session_id` links an existing practice session the student owns; if both have an internship they must match (`422`). Practice sessions are not copied or rescored; deleting a session leaves the round with `interview_session_id: null`.
+
+### 6F.5 Reminders (stored only)
+
+`{ "title": "Follow up with HR", "description": "Ask about the timeline", "remind_at": "2026-11-25T09:00:00+05:30" }`. Title 1-150, description up to 2,000; `remind_at` from now (5 minutes' tolerance) up to two years ahead. `PATCH` edits fields or sets `is_completed` (completing sets `completed_at`; reopening clears it).
+
+**Reminders are not delivered.** No e-mail, SMS, push or background scheduler exists; every reminder has `"delivery": "not_sent"`. Responses include `overdue` (pending and past due) and `due_within_24h`.
+
+`GET /applications/reminders`: `status` = `pending` (default), `completed` or `all`; `application_id`; `due_from`/`due_to`; `overdue` = `true`/`false`; `skip`, `limit` (1-100, default 50); sorted by `remind_at`.
+
+### 6F.6 History and activity
+
+`GET /applications/{id}/history` returns `status_history` (every real status change) and `activity`: `application_created`, `details_updated`, `status_changed`, `interview_scheduled`, `interview_updated`, `interview_deleted`, `reminder_created`, `reminder_updated`, `reminder_completed`, `reminder_reopened`, `reminder_deleted`, `application_deleted`, `application_restored`. Activity `details` contain statuses, changed field names, round numbers and ids only, never notes, contact details, URLs or reminder text.
+
+### 6F.7 Dashboard
+
+Computed from the caller's non-trashed records only; an empty account returns zeros and `null` rates.
+
+| Field | Definition |
+|---|---|
+| `saved_internships` | Bookmarks |
+| `total_applications`, `by_status` | All seven statuses, zeros included |
+| `submitted_applications` | Applications with `applied_at` (submitted at some point) |
+| `selected`, `rejected` | Applications in that status |
+| `interviews_scheduled` | Rounds not cancelled |
+| `upcoming_interviews`, `next_interviews` | Pending rounds from now on (count and the next five) |
+| `pending_reminders`, `overdue_reminders`, `completed_reminders` | Reminder counts |
+| `success_rate` | SELECTED applications that were submitted / submitted_applications x 100 (never above 100%) |
+| `decision_rate` | SELECTED / (SELECTED + REJECTED) x 100 |
+| `interview_rate` | submitted applications with >= 1 non-cancelled round / submitted_applications x 100 |
+| `recent_activity` | Last 10 events |
+
+Rates are rounded to one decimal place and `null` when the denominator is 0; the formulas are also returned in `formulas`.
+
+### 6F.8 Example workflow
+
+1. `POST /applications/bookmarks/12` while browsing (Phase 2) or after a match run (Phase 3).
+2. Tailor documents (Phase 5), then `POST /applications` with `internship_id: 12`, `status: "APPLIED"` and the document ids.
+3. Shortlisted: `PATCH /applications/41/status` `{ "status": "SHORTLISTED" }`.
+4. Interview invite: `POST /applications/41/interviews` (status becomes `INTERVIEW_SCHEDULED`); practise with `POST /interviews/sessions` (Phase 6) and link the session to the round.
+5. `POST /applications/41/reminders` to follow up; `PATCH /applications/reminders/9` `{ "is_completed": true }` when done.
+6. Offer: `PATCH /applications/41/status` `{ "status": "SELECTED" }`; the dashboard updates.
+
 ## 7. Administration APIs
 
 All endpoints require an access token for a user with the `admin` role.

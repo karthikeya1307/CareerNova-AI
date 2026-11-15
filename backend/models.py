@@ -149,6 +149,11 @@ class User(Base):
         passive_deletes=True,
     )
 
+    saved_internships: Mapped[list["SavedInternship"]] = relationship(
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
     conversations: Mapped[list["Conversation"]] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",
@@ -1099,15 +1104,40 @@ class InterviewAnswer(Base):
 # MODULE 8: APPLICATION TRACKING
 # ============================================================
 
+APPLICATION_STATUSES = ("SAVED", "APPLIED", "SHORTLISTED", "INTERVIEW_SCHEDULED", "SELECTED", "REJECTED",
+                        "WITHDRAWN")
+_STATUS_SQL = ", ".join(f"'{s}'" for s in APPLICATION_STATUSES)
+
+
 class Application(Base):
+    """A student's application (Phase 7 extends the original table).
+
+    Internal applications reference an internship from the knowledge base;
+    external ones (found elsewhere) store company, title and an optional URL
+    or reference. Company, title and listing details are copied from the
+    internship at creation, so the record survives if the internship row is
+    ever removed (internship_id is then set to NULL). ``deleted_at`` marks an
+    application moved to the trash (soft delete).
+    """
+
     __tablename__ = "applications"
 
     __table_args__ = (
-        UniqueConstraint(
-            "user_id",
-            "internship_id",
-            name="uq_application_user_internship",
-        ),
+        CheckConstraint(f"status IN ({_STATUS_SQL})", name="ck_applications_status"),
+        CheckConstraint("source IN ('internal', 'external')", name="ck_applications_source"),
+        CheckConstraint("source = 'internal' OR internship_id IS NULL",
+                        name="ck_applications_external_no_internship"),
+        CheckConstraint("work_mode IN ('Onsite', 'Hybrid', 'Remote')", name="ck_applications_work_mode"),
+        Index("ix_applications_user_status", "user_id", "status"),
+        Index("ix_applications_user_updated", "user_id", "updated_at"),
+        Index("ix_applications_user_applied", "user_id", "applied_at"),
+        Index("uq_applications_user_internship_active", "user_id", "internship_id", unique=True,
+              postgresql_where=text("deleted_at IS NULL AND internship_id IS NOT NULL")),
+        Index("uq_applications_user_url_active", "user_id", "application_url_normalized", unique=True,
+              postgresql_where=text("deleted_at IS NULL AND source = 'external' "
+                                    "AND application_url_normalized IS NOT NULL")),
+        Index("uq_applications_user_reference_active", "user_id", "company_key", "external_reference",
+              unique=True, postgresql_where=text("deleted_at IS NULL AND external_reference IS NOT NULL")),
     )
 
     application_id: Mapped[int] = mapped_column(
@@ -1119,13 +1149,33 @@ class Application(Base):
         nullable=False,
         index=True,
     )
-    internship_id: Mapped[int] = mapped_column(
-        ForeignKey("internships.internship_id", ondelete="CASCADE"),
-        nullable=False,
+    internship_id: Mapped[int | None] = mapped_column(
+        ForeignKey("internships.internship_id", ondelete="SET NULL"),
+        nullable=True,
     )
 
+    # Phase 7 fields.
+    source: Mapped[str] = mapped_column(String(20), nullable=False, server_default=text("'internal'"))
+    company_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    company_key: Mapped[str] = mapped_column(String(200), nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    application_url: Mapped[str | None] = mapped_column(String(1000))          # same size as internships
+    application_url_normalized: Mapped[str | None] = mapped_column(String(1000))
+    external_reference: Mapped[str | None] = mapped_column(String(100))
+    domain: Mapped[str | None] = mapped_column(String(80))
+    location: Mapped[str | None] = mapped_column(String(150))
+    work_mode: Mapped[str | None] = mapped_column(String(20))
+    contact_name: Mapped[str | None] = mapped_column(String(120))
+    contact_email: Mapped[str | None] = mapped_column(String(255))
+    resume_document_id: Mapped[int | None] = mapped_column(
+        ForeignKey("generated_documents.document_id", ondelete="SET NULL"))
+    cover_letter_document_id: Mapped[int | None] = mapped_column(
+        ForeignKey("generated_documents.document_id", ondelete="SET NULL"))
+    status_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
     status: Mapped[str] = mapped_column(
-        String(30), default="saved", nullable=False
+        String(30), default="SAVED", server_default=text("'SAVED'"), nullable=False
     )
     notes: Mapped[str | None] = mapped_column(Text)
 
@@ -1147,9 +1197,176 @@ class Application(Base):
     user: Mapped["User"] = relationship(
         back_populates="applications"
     )
-    internship: Mapped["Internship"] = relationship(
+    internship: Mapped["Internship | None"] = relationship(
         back_populates="applications"
     )
+    status_history: Mapped[list["ApplicationStatusHistory"]] = relationship(
+        back_populates="application", cascade="all, delete-orphan", passive_deletes=True,
+        order_by="ApplicationStatusHistory.history_id",
+    )
+    interviews: Mapped[list["ApplicationInterview"]] = relationship(
+        back_populates="application", cascade="all, delete-orphan", passive_deletes=True,
+        order_by="ApplicationInterview.round_number",
+    )
+    reminders: Mapped[list["ApplicationReminder"]] = relationship(
+        back_populates="application", cascade="all, delete-orphan", passive_deletes=True,
+        order_by="ApplicationReminder.remind_at",
+    )
+    activity: Mapped[list["ApplicationActivity"]] = relationship(
+        back_populates="application", cascade="all, delete-orphan", passive_deletes=True,
+        order_by="ApplicationActivity.activity_id",
+    )
+
+
+class SavedInternship(Base):
+    """A student's bookmark of a knowledge-base internship (Phase 7)."""
+
+    __tablename__ = "saved_internships"
+    __table_args__ = (
+        UniqueConstraint("user_id", "internship_id", name="uq_saved_internships_user_internship"),
+    )
+
+    bookmark_id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False, index=True)
+    internship_id: Mapped[int] = mapped_column(
+        ForeignKey("internships.internship_id", ondelete="CASCADE"), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    internship: Mapped["Internship"] = relationship()
+
+
+STATUS_CHANGE_TYPES = ("created", "manual", "correction", "interview_added", "interview_cancelled", "migrated")
+
+
+def _in_list(column: str, values: tuple[str, ...]) -> str:
+    return f"{column} IN (" + ", ".join(f"'{v}'" for v in values) + ")"
+
+
+class ApplicationStatusHistory(Base):
+    """Every actual status change of an application (Phase 7)."""
+
+    __tablename__ = "application_status_history"
+    __table_args__ = (
+        CheckConstraint(f"to_status IN ({_STATUS_SQL})", name="ck_application_status_history_to"),
+        CheckConstraint(f"from_status IS NULL OR from_status IN ({_STATUS_SQL})",
+                        name="ck_application_status_history_from"),
+        CheckConstraint(_in_list("change_type", STATUS_CHANGE_TYPES),
+                        name="ck_application_status_history_change_type"),
+        Index("ix_application_status_history_app_time", "application_id", "changed_at"),
+    )
+
+    history_id: Mapped[int] = mapped_column(primary_key=True)
+    application_id: Mapped[int] = mapped_column(
+        ForeignKey("applications.application_id", ondelete="CASCADE"), nullable=False)
+    from_status: Mapped[str | None] = mapped_column(String(30))
+    to_status: Mapped[str] = mapped_column(String(30), nullable=False)
+    change_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    changed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    application: Mapped["Application"] = relationship(back_populates="status_history")
+
+
+INTERVIEW_TYPES = ("technical", "hr", "behavioral", "managerial", "case_study", "assignment", "group", "other")
+INTERVIEW_MODES = ("online", "offline", "phone")
+INTERVIEW_OUTCOMES = ("pending", "passed", "failed", "cancelled", "no_show")
+
+
+class ApplicationInterview(Base):
+    """One interview round of an application (Phase 7)."""
+
+    __tablename__ = "application_interviews"
+    __table_args__ = (
+        UniqueConstraint("application_id", "round_number", name="uq_application_interviews_round"),
+        CheckConstraint("round_number >= 1", name="ck_application_interviews_round_positive"),
+        CheckConstraint(_in_list("interview_type", INTERVIEW_TYPES), name="ck_application_interviews_type"),
+        CheckConstraint(_in_list("mode", INTERVIEW_MODES), name="ck_application_interviews_mode"),
+        CheckConstraint(_in_list("outcome", INTERVIEW_OUTCOMES), name="ck_application_interviews_outcome"),
+        CheckConstraint("duration_minutes IS NULL OR (duration_minutes BETWEEN 5 AND 600)",
+                        name="ck_application_interviews_duration"),
+        Index("ix_application_interviews_app_time", "application_id", "scheduled_at"),
+    )
+
+    interview_id: Mapped[int] = mapped_column(primary_key=True)
+    application_id: Mapped[int] = mapped_column(
+        ForeignKey("applications.application_id", ondelete="CASCADE"), nullable=False)
+    round_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    interview_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    mode: Mapped[str] = mapped_column(String(20), nullable=False)
+    scheduled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    duration_minutes: Mapped[int | None] = mapped_column(Integer)
+    meeting_url: Mapped[str | None] = mapped_column(String(500))
+    location: Mapped[str | None] = mapped_column(String(200))
+    preparation_notes: Mapped[str | None] = mapped_column(Text)
+    feedback: Mapped[str | None] = mapped_column(Text)
+    outcome: Mapped[str] = mapped_column(String(20), nullable=False, server_default=text("'pending'"),
+                                         default="pending")
+    interview_session_id: Mapped[int | None] = mapped_column(
+        ForeignKey("interview_sessions.session_id", ondelete="SET NULL"), index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    application: Mapped["Application"] = relationship(back_populates="interviews")
+
+
+class ApplicationReminder(Base):
+    """A follow-up reminder for an application (Phase 7). Stored only; never delivered."""
+
+    __tablename__ = "application_reminders"
+    __table_args__ = (
+        Index("ix_application_reminders_app_time", "application_id", "remind_at"),
+        Index("ix_application_reminders_completed_time", "is_completed", "remind_at"),
+    )
+
+    reminder_id: Mapped[int] = mapped_column(primary_key=True)
+    application_id: Mapped[int] = mapped_column(
+        ForeignKey("applications.application_id", ondelete="CASCADE"), nullable=False)
+    title: Mapped[str] = mapped_column(String(150), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    remind_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    is_completed: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false", default=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    application: Mapped["Application"] = relationship(back_populates="reminders")
+
+
+ACTIVITY_EVENTS = (
+    "application_created", "details_updated", "status_changed", "interview_scheduled", "interview_updated",
+    "interview_deleted", "reminder_created", "reminder_updated", "reminder_completed", "reminder_reopened",
+    "reminder_deleted", "application_deleted", "application_restored",
+)
+
+
+class ApplicationActivity(Base):
+    """Non-sensitive activity feed for an application (Phase 7).
+
+    ``details`` holds statuses, changed field NAMES, round numbers and ids
+    only - never notes, contact details, URLs or reminder text.
+    """
+
+    __tablename__ = "application_activity"
+    __table_args__ = (
+        CheckConstraint(_in_list("event_type", ACTIVITY_EVENTS), name="ck_application_activity_event_type"),
+        Index("ix_application_activity_app_time", "application_id", "created_at"),
+    )
+
+    activity_id: Mapped[int] = mapped_column(primary_key=True)
+    application_id: Mapped[int] = mapped_column(
+        ForeignKey("applications.application_id", ondelete="CASCADE"), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    details: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    application: Mapped["Application"] = relationship(back_populates="activity")
 
 
 # ============================================================

@@ -158,6 +158,12 @@ flowchart TD
   and AI feedback is opt-in per answer. Names, contact details, addresses
   and PIN codes are scrubbed, and a final check blocks the request if any
   remain.
+- Application Tracking (P8, Phase 7) stores bookmarks, internal and
+  external applications, validated status changes with history, interview
+  rounds (linked to Phase 6 practice sessions), stored-only reminders and a
+  non-sensitive activity feed in D1, all scoped to the logged-in student;
+  it reads Phase 2/3/5/6 data without changing it and sends nothing to
+  the LLM service.
 - Vector search results are always filtered through PostgreSQL, so
   inactive or deleted internships are never returned, even from an
   outdated index.

@@ -444,6 +444,87 @@ Backend: FastAPI (proposed architecture)
 
 \- updated\_at: TIMESTAMP WITH TIME ZONE
 
+\- Extended in migration a9d3f6b2c8e4 (Phase 7):
+
+  \- internship\_id: now nullable, Foreign Key -> internships.internship\_id ON DELETE SET NULL (was CASCADE)
+
+  \- source: VARCHAR(20) NOT NULL, CHECK IN ('internal', 'external'); external rows have no internship\_id
+
+  \- company\_name, title: VARCHAR(200) NOT NULL (copied from the internship for internal applications); company\_key: normalised company name
+
+  \- application\_url (1000), application\_url\_normalized (1000), external\_reference (100), domain (80), location (150), work\_mode (CHECK IN ('Onsite', 'Hybrid', 'Remote'))
+
+  \- contact\_name (120), contact\_email (255): optional
+
+  \- resume\_document\_id, cover\_letter\_document\_id: Foreign Key -> generated\_documents.document\_id ON DELETE SET NULL
+
+  \- status: VARCHAR(30), default 'SAVED', CHECK IN ('SAVED', 'APPLIED', 'SHORTLISTED', 'INTERVIEW\_SCHEDULED', 'SELECTED', 'REJECTED', 'WITHDRAWN'); legacy lowercase values are mapped by the migration, and legacy rows already past SAVED (except WITHDRAWN) without an application date get applied\_at = updated\_at (else created\_at)
+
+  \- status\_changed\_at, deleted\_at (trash / soft delete): TIMESTAMP WITH TIME ZONE
+
+  \- Indexes: (user\_id, status), (user\_id, updated\_at), (user\_id, applied\_at)
+
+  \- Partial unique indexes (ignoring trashed rows): (user\_id, internship\_id); (user\_id, application\_url\_normalized) for external rows; (user\_id, company\_key, external\_reference)
+
+  \- The original UNIQUE (user\_id, internship\_id) constraint is replaced by the partial unique index
+
+\### 15a. saved\_internships (Phase 7)
+
+\- bookmark\_id: Integer, Primary Key
+
+\- user\_id: Foreign Key -> users.user\_id ON DELETE CASCADE, indexed
+
+\- internship\_id: Foreign Key -> internships.internship\_id ON DELETE CASCADE, indexed
+
+\- created\_at; UNIQUE (user\_id, internship\_id)
+
+\### 15b. application\_status\_history (Phase 7)
+
+\- history\_id: Integer, Primary Key
+
+\- application\_id: Foreign Key -> applications.application\_id ON DELETE CASCADE
+
+\- from\_status (nullable), to\_status: CHECK against the seven statuses
+
+\- change\_type: CHECK IN ('created', 'manual', 'correction', 'interview\_added', 'interview\_cancelled', 'migrated')
+
+\- changed\_at; INDEX (application\_id, changed\_at)
+
+\### 15c. application\_interviews (Phase 7)
+
+\- interview\_id: Integer, Primary Key; application\_id: Foreign Key ON DELETE CASCADE
+
+\- round\_number: UNIQUE per application, >= 1
+
+\- interview\_type: CHECK IN ('technical', 'hr', 'behavioral', 'managerial', 'case\_study', 'assignment', 'group', 'other'); mode: CHECK IN ('online', 'offline', 'phone')
+
+\- scheduled\_at (TIMESTAMP WITH TIME ZONE), duration\_minutes (5-600), meeting\_url (500), location (200), preparation\_notes, feedback
+
+\- outcome: CHECK IN ('pending', 'passed', 'failed', 'cancelled', 'no\_show'), default 'pending'
+
+\- interview\_session\_id: Foreign Key -> interview\_sessions.session\_id ON DELETE SET NULL (Phase 6 link)
+
+\- created\_at, updated\_at; INDEX (application\_id, scheduled\_at)
+
+\### 15d. application\_reminders (Phase 7)
+
+\- reminder\_id: Integer, Primary Key; application\_id: Foreign Key ON DELETE CASCADE
+
+\- title (150), description, remind\_at (TIMESTAMP WITH TIME ZONE), is\_completed (default false), completed\_at, created\_at, updated\_at
+
+\- INDEX (application\_id, remind\_at), INDEX (is\_completed, remind\_at). Stored only; never delivered.
+
+\### 15e. application\_activity (Phase 7)
+
+\- activity\_id: Integer, Primary Key; application\_id: Foreign Key ON DELETE CASCADE
+
+\- event\_type: CHECK against 13 event names; details: JSON (statuses, field names, round numbers and ids only)
+
+\- created\_at; INDEX (application\_id, created\_at)
+
+\- Deletion: moving an application to the trash keeps every related row; permanent deletion removes the application and (by cascade) its history, rounds, reminders and activity; deleting a user removes everything.
+
+
 \- Constraint: one application record per user and internship
 
 
@@ -506,7 +587,7 @@ Backend: FastAPI (proposed architecture)
 
 11\. interview\_sessions -> interview\_questions: One-to-many
 
-12\. users and internships -> applications
+12\. users and internships -> applications (internship optional for external applications); applications -> status history, interview rounds, reminders and activity: one-to-many; users -> saved\_internships <- internships
 
 13\. users -> conversations: One-to-many
 
