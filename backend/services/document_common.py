@@ -87,6 +87,9 @@ class FactCheckLog:
         }
 
 
+REMOVED_PLACEHOLDER = "[removed]"   # llm_privacy.REMOVED
+
+
 def validate_llm_statement(
     log: FactCheckLog,
     location: str,
@@ -100,6 +103,11 @@ def validate_llm_statement(
     if not isinstance(text, str) or not text.strip() or len(text) > MAX_LLM_TEXT:
         log.rejected.append({"location": location, "text": str(text)[:200],
                              "problems": [{"code": "invalid_output", "detail": "Missing or too long."}]})
+        return None
+    if REMOVED_PLACEHOLDER in text:
+        log.rejected.append({"location": location, "text": text[:200],
+                             "problems": [{"code": "privacy_placeholder",
+                                           "detail": "Statement repeats a removed personal detail."}]})
         return None
     if not isinstance(fact_ids, list) or not fact_ids or not all(isinstance(f, str) for f in fact_ids):
         log.rejected.append({"location": location, "text": text[:200],
@@ -120,15 +128,35 @@ def call_llm(
     candidate: CandidateFacts,
     log: FactCheckLog,
 ) -> dict[str, Any] | None:
-    """Send a privacy-checked payload; return parsed JSON or None on failure."""
+    """Send a privacy-checked payload; return parsed JSON or None on failure.
+
+    1. The original Phase 5 check: a request containing an exact contact
+       value (full name, e-mail, phone, links) is blocked, as before.
+    2. Phase 6 hardening: every candidate string is then scrubbed with the
+       shared scrubber (name parts, address, street numbers, PIN codes) and
+       checked again; anything left blocks the request.
+    """
     import json
 
+    from backend.services.llm_privacy import (
+        find_llm_payload_personal_data,
+        personal_details,
+        scrub_llm_payload,
+    )
+
+    leftover: list[str] = []
     try:
         assert_no_contact(payload, candidate.contact)
+        details = personal_details(candidate)
+        payload = scrub_llm_payload(payload, details)
+        leftover = find_llm_payload_personal_data(payload, details)
+        if leftover:
+            raise LLMError("personal data detected")
     except LLMError:
         log.warnings.append({"code": "privacy_guard",
                              "detail": "Personal contact information was detected in the request, so "
-                                       "nothing was sent. Deterministic content was used instead."})
+                                       "nothing was sent. Deterministic content was used instead."
+                                       + (f" Detected: {', '.join(leftover)}." if leftover else "")})
         return None
     try:
         result = provider.complete_json(system, json.dumps(payload, ensure_ascii=False))

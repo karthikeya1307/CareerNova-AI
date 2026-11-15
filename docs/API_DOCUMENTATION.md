@@ -802,6 +802,14 @@ The letter never claims a missing skill. The learning paragraph ("I am currently
 - Available only when the server sets `LLM_PROVIDER=groq` and `GROQ_API_KEY`. Otherwise `GET /documents/llm-status` returns `available: false`, and `use_llm: true` returns `503`.
 - Each request must set `use_llm: true` **and** `llm_consent: true`, after the client has shown the `disclosure` text. Without consent the request returns `422`.
 - Only the content facts needed for the document and the internship details are sent. **Name, e-mail, phone, links and location are never sent.** Every payload is checked before sending; if contact details are detected, nothing is sent and deterministic content is used.
+- *(Hardened in Phase 6, applies to every AI request.)* After that check, a copy of every candidate string is scrubbed of:
+  - each part of the name
+  - the parsed postal address and its parts
+  - street-number patterns
+  - six-digit PIN codes
+  - any e-mail, phone number or link
+
+  The copy is checked again, and if anything remains nothing is sent (`privacy_guard`; the warning names the kind of data, never the value). The internship record and canonical skill lists are not altered. AI statements that repeat a removed detail (`[removed]`) are rejected (`privacy_placeholder`). Stored resumes, facts and documents are unchanged.
 - Every generated statement must cite fact ids and pass the fact checker. Unsupported statements are replaced by deterministic content and listed in `fact_check.rejected_statements`.
 - If the provider fails or times out, deterministic content is used and an `llm_unavailable` warning is recorded.
 - API keys and resume content are never logged.
@@ -817,6 +825,116 @@ Edits are saved as written. The same fact checks run and are returned as `fact_c
 - `format=docx`: an ATS-friendly single-column DOCX with standard headings and plain bullets, and no tables, images or text boxes. The project's own resume parser reads it back with the same skills, education and contact e-mail.
 - `format=txt`: plain text.
 - PDF is not supported in this phase.
+
+## 6E. Interview Preparation APIs
+
+All endpoints require login. Sessions, questions and answers of other users return `404`. Inactive or past-deadline internships return `404`; a resume without a successful extraction returns `422`.
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/interviews/question-bank/version` | Bank versions and coverage |
+| GET | `/interviews/questions/preview?resume_id=&internship_id=&technical=&project=&behavioral=&internship=&difficulty=` | Preview a question set (not saved) |
+| POST | `/interviews/sessions` | Start a practice or mock interview (`201`) |
+| GET | `/interviews/sessions` | History (`status`, `internship_id`, `resume_id`) |
+| GET | `/interviews/sessions/{id}` | Session with questions |
+| POST | `/interviews/sessions/{id}/questions/{qid}/reveal` | Reveal the suggested answer |
+| POST | `/interviews/sessions/{id}/questions/{qid}/answers` | Submit an answer (`201`); retries allowed |
+| GET | `/interviews/sessions/{id}/questions/{qid}/answers` | All attempts |
+| POST | `/interviews/sessions/{id}/complete` | Finish and get the summary |
+| DELETE | `/interviews/sessions/{id}` | Permanently delete (the UI must confirm) |
+| GET | `/interviews/progress` | Progress across sessions |
+
+### 6E.1 Questions
+
+Create body:
+
+```json
+{ "resume_id": 3, "internship_id": 12, "mode": "mock",
+  "mix": { "technical": 3, "project": 2, "behavioral": 2, "internship": 1 },
+  "difficulty": "mixed", "time_limit_seconds": 120, "use_llm": false, "llm_consent": false }
+```
+
+Rules: the mix totals 1–15 questions, `difficulty` is `mixed`/`easy`/`medium`/`hard`, and `time_limit_seconds` is 30–900 (applies in mock mode only). Without an internship, the internship-specific quota becomes behavioral questions.
+
+| Category | Source | Grounding |
+|---|---|---|
+| Technical | Curated bank (`backend/data/interview_question_bank.json`, v2026.11-v2): 207 questions, 3 per skill (easy/medium/hard) for all 69 dataset skills, each with 3 key points | Ordered: the internship's required skills you have, then required skills you lack (labelled `required_missing`), then preferred skills you have, then your other skills |
+| Project / experience | Templates | Use only the cited fact's title and the skills that fact names; `source_fact_ids` is returned |
+| Behavioral / HR | Curated bank (12 questions, STAR guidance) | Questions from your 3 most recent sessions are avoided |
+| Internship | Templates (motivation, missing required skill, fit, domain) | Use only the internship record |
+
+Selection is deterministic for a given user, resume, internship and session number.
+
+**Notices.** If the session has fewer (or different) questions than requested, `notices` explains why, for example:
+
+```json
+[{ "code": "fewer_questions", "category": "project", "requested": 5, "generated": 2,
+   "detail": "Your resume has 2 project or experience entries to ask about. Add projects to your resume for more questions." },
+ { "code": "internship_questions_replaced", "category": "internship", "requested": 1, "generated": 0,
+   "detail": "No internship was selected, so internship-specific questions were replaced with behavioral questions." }]
+```
+
+`notices` is also stored in `summary.notices`, together with `summary.requested_questions`. The preview endpoint returns only the question list.
+
+**Mock mode:** `key_points`, `explanation` and `suggested_answer` are `null` until the question is answered or revealed. **Practice mode:** they are always visible.
+
+### 6E.2 Answer evaluation (deterministic by default)
+
+`POST .../answers` with `{ "answer_text": "...", "time_taken_seconds": 95, "use_llm_feedback": false, "llm_consent": false }`. Answers can be 1–5,000 characters. Answering a completed session returns `409`.
+
+Scores are 0–100. Labels: Excellent ≥ 80, Good ≥ 65, Fair ≥ 45, Needs work otherwise.
+
+| Category | Rubric |
+|---|---|
+| Technical | **Key-point coverage, not verified correctness.** 80% key-point coverage + 20% length. A key point is covered by its curated keywords, or by local semantic similarity ≥ **0.50** with the pinned MiniLM model (nothing leaves the server). The threshold was calibrated so that off-topic, generic and vague answers get no credit. |
+| Behavioral | STAR structure 50%, answering the actual question 20%, first-person 15%, length 15%. Off-theme answers are capped at 50. |
+| Project | Mentions the project 25%, its technologies 30%, own role 20%, outcome 15%, length 10% |
+| Internship | Company or role (or a learning plan for a missing skill) 30%, real skills 30%, specificity 20%, length 20% |
+
+Answers under 10 words are capped at 20, and empty answers score 0. If an answer mentions skills that are not on the resume, `advisories` notes are returned; they do not change the score.
+
+**Safeguards against inflated scores:**
+
+| Case | Rule | Field in `evaluation` |
+|---|---|---|
+| Common incorrect statement (technical) | 143 questions across 61 skills have curated wrong statements (`backend/data/interview_misconceptions.json`, v2026.11-v2), such as "lists are immutable" or "an image is the running instance". A match gives that key point no credit, even if its keywords appear, and caps the score at 55 (one mistake) or 35 (two or more). A wrong statement the student rejects ("it is a misconception that …") is not penalised. | `incorrect_statements` (with corrections), `caps_applied: ["incorrect_statements"]` |
+| "I don't know" (technical) | Sentences that say the student does not know earn no credit. If they make up half the answer or more, the score is capped at 25. | `uncertain_sentences`, `caps_applied: ["mostly_uncertain"]` |
+| Keyword list (all categories) | An answer of 10+ words with no real sentence (a run of words with almost no joining words) is capped at 30. | `caps_applied: ["keyword_list"]` |
+| Thin STAR story (behavioral) | STAR parts count only in real sentences. Fewer than 3 real sentences, or every part in a single sentence, halves the STAR credit and caps the score at 40. | `real_sentences`, `caps_applied: ["thin_story"]` |
+
+Technical evaluations include `"score_basis": "key_point_coverage"` and `"correctness_verified": false`. Their feedback starts with "Key-point coverage" and states that the score does not verify every statement.
+
+Each attempt is stored (`attempt` 1, 2, …). The question shows the latest one.
+
+**Optional AI feedback:** set `use_llm_feedback: true` **and** `llm_consent: true`.
+- It is off by default. Without consent the request returns `422`; without a configured provider it returns `503`.
+- Before sending, a copy of the answer is scrubbed of:
+  - the full name and each part of it (first name or surname on its own)
+  - e-mail, phone and links
+  - the stored resume address, each part of it, and the profile location
+  - street-number patterns ("12 MG Road", "Flat No. 4B") and six-digit PIN codes
+
+  A final check runs on the scrubbed text. If anything personal remains, nothing is sent (`llm_warnings` code `privacy_guard`). The stored answer is never altered.
+- The same shared scrubber and check (`backend/services/llm_privacy.py`, applied in `call_llm`) protect every AI request: Phase 5 resumes and cover letters, AI-tailored interview questions and answer feedback. AI-tailored questions that repeat a removed detail are rejected (`privacy_placeholder`).
+- If the session's resume was deleted, AI feedback is skipped with `llm_warnings` code `resume_unavailable`.
+- **Scores always come from the rubric.** If the provider fails, rubric feedback is returned with an `llm_warnings` entry (`llm_unavailable`).
+
+**Optional AI-tailored questions** (`use_llm` at session creation): at most 2 extra questions. Each must cite fact ids and pass the Phase 5 fact checker; rejected questions are recorded in `summary.generation`.
+
+### 6E.3 Completion and progress
+
+`POST .../complete` returns `summary`:
+- `overall_score`: unanswered questions count as 0
+- `average_answered_score`
+- `by_category`
+- `strengths` and `improvements` (with missed key points)
+- `related_skill_gaps`: matching Phase 4 recommendations, read-only
+
+`GET /interviews/progress` returns:
+- session and answer counts and the average score
+- `by_category` and `by_skill`
+- `retry_improvement`: the average change from first to last attempt
+- the last 10 completed session scores
 
 ## 7. Administration APIs
 

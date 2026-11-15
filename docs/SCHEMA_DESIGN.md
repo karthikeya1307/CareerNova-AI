@@ -358,13 +358,25 @@ Backend: FastAPI (proposed architecture)
 
 \- internship\_id: Integer, Foreign Key -> internships.internship\_id, nullable
 
-\- status: VARCHAR(30), default "started"
+\- status: VARCHAR(30), default "started", CHECK IN ('started', 'in\_progress', 'completed', 'abandoned')
 
-\- score: FLOAT, nullable
+\- score: FLOAT, nullable (overall 0-100; unanswered questions count as 0)
 
 \- started\_at: TIMESTAMP WITH TIME ZONE
 
 \- completed\_at: TIMESTAMP WITH TIME ZONE, nullable
+
+\- Added in migration f3c9e1a5b7d2 (Phase 6, additive):
+
+  \- resume\_id: Integer, Foreign Key -> resumes.resume\_id (ON DELETE SET NULL), indexed
+
+  \- title, mode (CHECK IN ('practice', 'mock')), question\_mix JSON, difficulty
+
+  \- generation\_method, llm\_provider, llm\_model
+
+  \- total\_questions, answered\_count (NOT NULL default 0), summary JSON, updated\_at
+
+  \- INDEX (user\_id, status)
 
 
 
@@ -378,13 +390,39 @@ Backend: FastAPI (proposed architecture)
 
 \- question\_type: VARCHAR(50), nullable
 
-\- user\_answer: TEXT, nullable
+\- user\_answer: TEXT, nullable (latest attempt)
 
-\- feedback: TEXT, nullable
+\- feedback: TEXT, nullable (latest attempt)
 
-\- score: FLOAT, nullable
+\- score: FLOAT, nullable (latest attempt, 0-100)
 
 \- created\_at: TIMESTAMP WITH TIME ZONE
+
+\- Added in migration f3c9e1a5b7d2 (Phase 6, additive):
+
+  \- category: CHECK IN ('technical', 'project', 'behavioral', 'internship'); position (UNIQUE per session)
+
+  \- skill\_id: Foreign Key -> skills.skill\_id (ON DELETE SET NULL); bank\_question\_id; source\_fact\_ids JSON
+
+  \- difficulty: CHECK IN ('easy', 'medium', 'hard'); key\_points JSON; explanation; suggested\_answer JSON; context JSON
+
+  \- time\_limit\_seconds; revealed\_at; answered\_at; evaluation JSON
+
+\### 14a. interview\_answers (Phase 6)
+
+\- answer\_id: Integer, Primary Key
+
+\- question\_id: Integer, Foreign Key -> interview\_questions.question\_id (ON DELETE CASCADE), indexed
+
+\- attempt: Integer; UNIQUE (question\_id, attempt)
+
+\- answer\_text: TEXT NOT NULL; time\_taken\_seconds: Integer
+
+\- score: FLOAT NOT NULL (0-100); evaluation: JSON NOT NULL; feedback: TEXT NOT NULL
+
+\- feedback\_source: VARCHAR(20), CHECK IN ('rubric', 'llm'); created\_at
+
+\- Deleting a session deletes its questions and answers; deleting a user deletes everything; deleting a resume keeps the history with resume\_id NULL.
 
 
 

@@ -149,6 +149,15 @@ flowchart TD
   LLM service to rephrase (opt-in per document; contact details never
   sent). Every statement is fact-checked; documents are versioned in D1
   and rendered to DOCX/TXT on download (nothing stored in D2).
+- Interview Preparation (P7, Phase 6) builds sessions from a curated
+  question bank (all 69 dataset skills), the student's own resume facts
+  (project questions cite fact ids) and the internship record; answers
+  are scored by deterministic rubrics with optional local semantic
+  matching (technical scores are key-point coverage, with curated checks
+  for common wrong statements), attempts and summaries are stored in D1,
+  and AI feedback is opt-in per answer. Names, contact details, addresses
+  and PIN codes are scrubbed, and a final check blocks the request if any
+  remain.
 - Vector search results are always filtered through PostgreSQL, so
   inactive or deleted internships are never returned, even from an
   outdated index.

@@ -1,0 +1,1767 @@
+{
+  "version": "2026.11-v2",
+  "note": "Common incorrect statements per key point. Patterns are lower-case regular expressions matched per sentence; a negation just before the match (not, never, avoid, instead of, misconception, ...) suppresses it. Curated, not exhaustive.",
+  "misconceptions": {
+    "python-e1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\blists? (?:are|is) immutable",
+          "\\btuples? (?:are|is) mutable",
+          "\\b(?:can|could) (?:append|add) (?:items |elements |values )?to a tuple",
+          "\\btuples? can be (?:changed|modified)"
+        ],
+        "note": "Lists are mutable and tuples are immutable, not the other way round."
+      },
+      {
+        "point": 1,
+        "patterns": [
+          "\\blists? can be (?:used as )?(?:a )?(?:dictionary|dict) keys?",
+          "\\blists? (?:are|is) hashable",
+          "\\btuples? can(?:not|'t) be (?:used as )?(?:a )?(?:dictionary|dict) keys?"
+        ],
+        "note": "Lists are not hashable and cannot be dictionary keys; tuples of hashable items can."
+      },
+      {
+        "point": 2,
+        "patterns": [
+          "\\blists? (?:use|uses|are written with) (?:round )?parenthes",
+          "\\btuples? (?:use|uses|are written with) square brackets"
+        ],
+        "note": "Lists use square brackets; tuples use parentheses."
+      }
+    ],
+    "python-m1": [
+      {
+        "point": 2,
+        "patterns": [
+          "\\bgenerators? (?:store|stores|build|builds|keep|keeps) (?:the )?(?:whole|entire|all)",
+          "\\bgenerators? (?:use|uses|need|needs) more memory"
+        ],
+        "note": "Generators produce items lazily and use less memory than building a full list."
+      }
+    ],
+    "python-h1": [
+      {
+        "point": 1,
+        "patterns": [
+          "\\bdecorators? (?:change|changes|edit|edits|rewrite|rewrites) the (?:original )?(?:function'?s? )?source"
+        ],
+        "note": "A decorator wraps a function; it does not edit the original source code."
+      }
+    ],
+    "java-e1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\b(?:a )?class can extend (?:many|multiple|several) (?:abstract )?classes",
+          "\\bcan(?:not|'t)? only implement one interface",
+          "\\bcan(?:not|'t) implement (?:many|multiple) interfaces"
+        ],
+        "note": "A Java class can implement many interfaces but extend only one class."
+      },
+      {
+        "point": 1,
+        "patterns": [
+          "\\babstract class(?:es)? (?:can(?:not|'t)|do(?:es)? not) have (?:fields|state|constructors?)"
+        ],
+        "note": "Abstract classes can have fields and constructors."
+      }
+    ],
+    "java-m1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\bhashmaps? (?:keeps?|stores?|returns?) (?:its )?(?:keys|entries) in (?:sorted|insertion) order"
+        ],
+        "note": "HashMap does not guarantee any order (use TreeMap or LinkedHashMap for ordering)."
+      }
+    ],
+    "java-h1": [
+      {
+        "point": 2,
+        "patterns": [
+          "\\bjava (?:can(?:not|'t)|never) (?:has|have) memory leaks",
+          "\\bno memory leaks (?:are possible )?in java",
+          "\\bgarbage collect\\w* (?:prevents?|eliminates?) (?:all )?memory leaks"
+        ],
+        "note": "Java can still leak memory when references are kept unintentionally."
+      },
+      {
+        "point": 0,
+        "patterns": [
+          "\\bgarbage collect\\w* (?:frees|deletes|removes) (?:all )?objects (?:that are )?still (?:referenced|reachable|in use)"
+        ],
+        "note": "The garbage collector only frees objects that are no longer reachable."
+      }
+    ],
+    "cpp-e1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\breferences? can be (?:null|reassigned|reseated)",
+          "\\bpointers? can(?:not|'t) be (?:null|reassigned)"
+        ],
+        "note": "A pointer can be null and reassigned; a reference cannot."
+      }
+    ],
+    "cpp-m1": [
+      {
+        "point": 1,
+        "patterns": [
+          "\\b(?:must|have to|need to) (?:manually )?call (?:the )?destructor"
+        ],
+        "note": "With RAII the destructor runs automatically when the object goes out of scope."
+      }
+    ],
+    "cpp-h1": [
+      {
+        "point": 1,
+        "patterns": [
+          "\\bstd::move (?:itself )?(?:moves|copies) (?:the )?(?:object|data|value)"
+        ],
+        "note": "std::move only casts to an rvalue reference; the move constructor or assignment does the transfer."
+      }
+    ],
+    "js-e1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\bvar (?:is|are) block[- ]scoped",
+          "\\blet (?:and const )?(?:is|are) function[- ]scoped"
+        ],
+        "note": "let and const are block-scoped; var is function-scoped."
+      },
+      {
+        "point": 1,
+        "patterns": [
+          "\\bconst (?:variables? )?can be reassigned"
+        ],
+        "note": "A const binding cannot be reassigned (although an object it points to can be mutated)."
+      }
+    ],
+    "js-m1": [
+      {
+        "point": 1,
+        "patterns": [
+          "\\bawait (?:blocks|freezes) the (?:whole |entire |main )?(?:thread|program|event loop)"
+        ],
+        "note": "await pauses only the async function; the thread and event loop keep running."
+      }
+    ],
+    "js-h1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\bjavascript (?:is|runs as) multi-?threaded",
+          "\\bjavascript runs? (?:your code )?on multiple threads"
+        ],
+        "note": "JavaScript runs your code on a single thread with a call stack."
+      },
+      {
+        "point": 2,
+        "patterns": [
+          "\\b(?:macrotasks?|timers?|settimeout) (?:callbacks? )?(?:run|runs|execute|executes) before (?:microtasks?|promises?)"
+        ],
+        "note": "Microtasks (promise callbacks) run before macrotasks such as timers."
+      }
+    ],
+    "ts-e1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\btypes? (?:are|is) (?:checked|enforced) at runtime",
+          "\\btypescript (?:checks|enforces) types at runtime"
+        ],
+        "note": "TypeScript checks types at compile time; types are erased at runtime."
+      },
+      {
+        "point": 1,
+        "patterns": [
+          "\\bbrowsers? (?:run|runs|execute|executes) typescript directly"
+        ],
+        "note": "Browsers run the JavaScript that TypeScript compiles to."
+      }
+    ],
+    "ts-m1": [
+      {
+        "point": 1,
+        "patterns": [
+          "\\btype alias(?:es)? can be merged",
+          "\\binterfaces? can(?:not|'t) be extended"
+        ],
+        "note": "Interfaces can be extended and merged; type aliases cannot be merged."
+      }
+    ],
+    "ts-h1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\bgenerics? (?:are|is) (?:the same as|just like) any\\b",
+          "\\bgenerics? (?:lose|loses|remove|removes|turn off|turns off|disable|disables) type (?:safety|checking)"
+        ],
+        "note": "Generics keep type safety, unlike any."
+      }
+    ],
+    "kotlin-e1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\btypes? (?:are|is) nullable by default"
+        ],
+        "note": "Kotlin types are non-nullable by default."
+      },
+      {
+        "point": 1,
+        "patterns": [
+          "\\b(?:the )?!! (?:operator )?is (?:always )?safe"
+        ],
+        "note": "!! throws if the value is null; prefer ?. and ?:."
+      }
+    ],
+    "kotlin-m1": [
+      {
+        "point": 1,
+        "patterns": [
+          "\\b(?:have to|must|need to) (?:write|implement) (?:equals|hashcode|tostring)\\w* (?:manually|yourself)"
+        ],
+        "note": "Data classes generate equals, hashCode, toString and copy automatically."
+      }
+    ],
+    "kotlin-h1": [
+      {
+        "point": 1,
+        "patterns": [
+          "\\bsuspend functions? (?:block|blocks) (?:the )?(?:main |ui )?thread",
+          "\\bcoroutines? (?:are|is) (?:the same as |just )?(?:os |operating system )?threads?\\b"
+        ],
+        "note": "suspend functions pause without blocking a thread; coroutines are lighter than threads."
+      }
+    ],
+    "swift-e1": [
+      {
+        "point": 2,
+        "patterns": [
+          "\\bforce unwrap\\w* (?:is|are) (?:always )?safe"
+        ],
+        "note": "Force unwrapping crashes if the value is nil."
+      },
+      {
+        "point": 0,
+        "patterns": [
+          "\\boptionals? (?:can(?:not|'t)|never) (?:be|hold) nil"
+        ],
+        "note": "An optional can hold nil; that is its purpose."
+      }
+    ],
+    "swift-m1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\bstructs? (?:are|is) (?:a )?reference types?",
+          "\\bclass(?:es)? (?:are|is) (?:a )?value types?"
+        ],
+        "note": "Structs are value types; classes are reference types."
+      },
+      {
+        "point": 1,
+        "patterns": [
+          "\\bstructs? (?:support|supports|can use) inheritance",
+          "\\bstructs? can inherit"
+        ],
+        "note": "Only classes support inheritance in Swift."
+      }
+    ],
+    "swift-h1": [
+      {
+        "point": 2,
+        "patterns": [
+          "\\b(?:protocols?|extensions?) can(?:not|'t) (?:have|provide) default implementations?"
+        ],
+        "note": "Protocol extensions can provide default implementations."
+      }
+    ],
+    "html-e1": [
+      {
+        "point": 1,
+        "patterns": [
+          "\\bsemantic (?:html|elements?) (?:has|have|makes) no (?:effect|difference) (?:on|for|to) accessibility"
+        ],
+        "note": "Semantic elements help screen readers and other assistive technology."
+      }
+    ],
+    "html-m1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\bplaceholders? (?:can|should|are enough to) replace (?:the )?labels?"
+        ],
+        "note": "Placeholders are not a substitute for labels."
+      }
+    ],
+    "html-h1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\binline elements? (?:always )?(?:start|starts|begin|begins) on a new line",
+          "\\bblock elements? (?:flow|stay) (?:inline|in the text|on the same line)"
+        ],
+        "note": "Block elements start on a new line; inline elements flow within text."
+      }
+    ],
+    "css-e1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\bmargins? (?:is|are|sits?) inside the border",
+          "\\bpadding (?:is|sits) outside the border"
+        ],
+        "note": "Padding is inside the border; margin is outside it."
+      },
+      {
+        "point": 1,
+        "patterns": [
+          "\\bborder-box (?:excludes|does not include|doesn't include) (?:the )?(?:padding|border)"
+        ],
+        "note": "border-box includes padding and border in the declared width."
+      },
+      {
+        "point": 2,
+        "patterns": [
+          "\\bpadding (?:can )?collapses?"
+        ],
+        "note": "Vertical margins can collapse; padding does not."
+      }
+    ],
+    "css-m1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\bflexbox (?:is|was) (?:for|designed for|meant for) two[- ]dimensional",
+          "\\bgrid (?:is|was) (?:only )?(?:for|designed for|meant for) one[- ]dimensional"
+        ],
+        "note": "Flexbox is one-dimensional; Grid is two-dimensional."
+      }
+    ],
+    "css-h1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\bclass(?:es)? (?:selectors? )?(?:beat|beats|override|overrides|win over|wins over) ids?\\b",
+          "\\belements? (?:selectors? )?(?:beat|beats|override|overrides) class"
+        ],
+        "note": "IDs beat classes, which beat element selectors."
+      },
+      {
+        "point": 1,
+        "patterns": [
+          "\\bthe (?:first|earlier) rule wins"
+        ],
+        "note": "When specificity ties, the later rule wins."
+      }
+    ],
+    "bootstrap-e1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\b(?:10|16|24)[- ]column (?:grid|layout)"
+        ],
+        "note": "Bootstrap's grid has 12 columns."
+      }
+    ],
+    "bootstrap-m1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\bedit(?:ing)? (?:the )?bootstrap (?:source|core|css) files? directly"
+        ],
+        "note": "Customise through variables or your own CSS rather than editing Bootstrap's files."
+      }
+    ],
+    "bootstrap-h1": [
+      {
+        "point": 1,
+        "patterns": [
+          "\\bbootstrap (?:has|adds) no (?:extra |additional )?(?:css )?(?:size|weight|overhead)"
+        ],
+        "note": "Frameworks add CSS weight unless you import only what you use."
+      }
+    ],
+    "tailwind-e1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\btailwind (?:provides|gives you|is) (?:pre-?built|ready-?made) (?:ui )?components"
+        ],
+        "note": "Tailwind provides utility classes, not pre-built components."
+      }
+    ],
+    "tailwind-m1": [
+      {
+        "point": 2,
+        "patterns": [
+          "\\btailwind is desktop[- ]first",
+          "\\bunprefixed classes? (?:only )?apply only (?:to|on) (?:mobile|small)"
+        ],
+        "note": "Tailwind is mobile-first: unprefixed classes apply at all sizes."
+      }
+    ],
+    "react-e1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\bprops (?:are|is) mutable",
+          "\\b(?:a )?child (?:component )?(?:can|should) (?:modify|change|mutate) (?:its )?props"
+        ],
+        "note": "Props are read-only for the component that receives them."
+      },
+      {
+        "point": 2,
+        "patterns": [
+          "\\bchanging state (?:does not|doesn't|never) (?:trigger|cause) (?:a )?re-?render"
+        ],
+        "note": "Updating state triggers a re-render."
+      }
+    ],
+    "react-m1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\buseeffect runs? before (?:the )?(?:first )?render"
+        ],
+        "note": "useEffect runs after the component renders."
+      },
+      {
+        "point": 1,
+        "patterns": [
+          "\\b(?:an )?empty (?:dependency )?array (?:makes it )?runs? (?:it )?(?:on )?every render",
+          "\\bwithout (?:a|the|any) dependency array (?:it )?runs? (?:only )?once"
+        ],
+        "note": "An empty array runs the effect once after mount; no array runs it after every render."
+      }
+    ],
+    "rn-e1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\breact native (?:renders|runs) (?:inside |in )?(?:a )?webviews?",
+          "\\breact native (?:uses|renders) html"
+        ],
+        "note": "React Native renders native components, not HTML in a web view."
+      }
+    ],
+    "rn-h1": [
+      {
+        "point": 1,
+        "patterns": [
+          "\\bscrollview (?:is|works) better (?:than flatlist )?for long lists",
+          "\\buse scrollview (?:instead of|rather than) flatlist"
+        ],
+        "note": "FlatList virtualises long lists; ScrollView renders everything at once."
+      }
+    ],
+    "angular-h1": [
+      {
+        "point": 1,
+        "patterns": [
+          "\\bonpush (?:checks|runs change detection) (?:more often|on every)"
+        ],
+        "note": "OnPush reduces checks; it does not run change detection more often."
+      }
+    ],
+    "vue-m1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\bwatchers? (?:are|is) cached",
+          "\\bcomputed propert(?:y|ies) (?:are|is) (?:not cached|for side effects)"
+        ],
+        "note": "Computed properties are cached; watchers run side effects."
+      }
+    ],
+    "node-e1": [
+      {
+        "point": 1,
+        "patterns": [
+          "\\bnode(?:\\.?js)? (?:uses|is based on) (?:blocking|synchronous) i/?o",
+          "\\bnode(?:\\.?js)? (?:creates|uses|starts|spawns) a (?:new )?thread (?:per|for each|for every) (?:request|connection)"
+        ],
+        "note": "Node.js uses non-blocking, event-driven I/O rather than a thread per request."
+      },
+      {
+        "point": 0,
+        "patterns": [
+          "\\bnode(?:\\.?js)? is a (?:new )?programming language"
+        ],
+        "note": "Node.js is a JavaScript runtime, not a language."
+      }
+    ],
+    "node-h1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\bcpu[- ]heavy (?:work|tasks?|code) (?:does not|doesn't|won't|will not) block",
+          "\\bmaking (?:it|the function|the code) async (?:fixes|solves|prevents|avoids) (?:the )?block"
+        ],
+        "note": "CPU-heavy work blocks the event loop even inside an async function."
+      }
+    ],
+    "django-e1": [
+      {
+        "point": 1,
+        "patterns": [
+          "\\btemplates? (?:handle|handles) (?:the )?(?:http )?(?:requests?|business logic)",
+          "\\bviews? (?:only )?(?:render|renders) (?:the )?html (?:and|while) templates?"
+        ],
+        "note": "Views handle requests; templates render HTML."
+      }
+    ],
+    "django-m1": [
+      {
+        "point": 1,
+        "patterns": [
+          "\\bmigrate (?:command )?creates (?:the )?migrations?",
+          "\\bmakemigrations applies"
+        ],
+        "note": "makemigrations creates migration files; migrate applies them."
+      }
+    ],
+    "django-h1": [
+      {
+        "point": 1,
+        "patterns": [
+          "\\bselect_related (?:is )?(?:for|used for|works for) many-to-many",
+          "\\bprefetch_related (?:uses|does|performs) (?:a )?(?:sql )?join"
+        ],
+        "note": "select_related uses a SQL join for foreign keys; prefetch_related runs a separate query."
+      }
+    ],
+    "fastapi-e1": [
+      {
+        "point": 1,
+        "patterns": [
+          "\\b(?:have to|must|need to) write (?:the )?(?:api )?(?:docs|documentation) (?:by hand|manually)"
+        ],
+        "note": "FastAPI generates OpenAPI documentation automatically."
+      }
+    ],
+    "fastapi-h1": [
+      {
+        "point": 2,
+        "patterns": [
+          "\\b(?:blocking|synchronous) (?:calls?|code|functions?) (?:inside|in) (?:an? )?async def (?:is|are) fine",
+          "\\basync def (?:is|endpoints are) always faster"
+        ],
+        "note": "Blocking calls inside async def stall the event loop; async is not automatically faster."
+      },
+      {
+        "point": 1,
+        "patterns": [
+          "\\bdef endpoints? (?:block|blocks) the (?:event loop|whole server)"
+        ],
+        "note": "Plain def endpoints run in a thread pool, so they do not block the event loop."
+      }
+    ],
+    "spring-e1": [
+      {
+        "point": 1,
+        "patterns": [
+          "\\b(?:requires|needs) (?:an )?external (?:tomcat|server|application server) to run"
+        ],
+        "note": "Spring Boot includes an embedded server."
+      }
+    ],
+    "spring-h1": [
+      {
+        "point": 1,
+        "patterns": [
+          "\\brolls? back on (?:checked|all) exceptions by default",
+          "\\b(?:does not|doesn't|never) roll back on runtime exceptions"
+        ],
+        "note": "@Transactional rolls back on runtime (unchecked) exceptions by default, not checked ones."
+      }
+    ],
+    "rest-e1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\bget (?:creates|is used to create)",
+          "\\bpost (?:is|is used) (?:only )?(?:to|for) (?:read|fetch)"
+        ],
+        "note": "GET reads data; POST creates."
+      },
+      {
+        "point": 1,
+        "patterns": [
+          "\\bdelete (?:creates|updates)"
+        ],
+        "note": "DELETE removes a resource."
+      }
+    ],
+    "rest-m1": [
+      {
+        "point": 1,
+        "patterns": [
+          "\\b404 (?:means|is) (?:a )?server error",
+          "\\b401 (?:means|is) not found",
+          "\\b4\\d\\d (?:codes? )?(?:are|is|means) (?:a )?server errors?",
+          "\\b5\\d\\d (?:codes? )?(?:are|is|means) (?:a )?client errors?"
+        ],
+        "note": "4xx codes are client errors and 5xx codes are server errors."
+      },
+      {
+        "point": 0,
+        "patterns": [
+          "\\b201 (?:means|is) no content",
+          "\\b204 (?:means|is) created"
+        ],
+        "note": "201 means Created and 204 means No Content."
+      }
+    ],
+    "rest-h1": [
+      {
+        "point": 1,
+        "patterns": [
+          "\\bpost (?:is|requests are) idempotent",
+          "\\b(?:get|put|delete) (?:is|are|requests are) not idempotent"
+        ],
+        "note": "GET, PUT and DELETE are idempotent; POST is not."
+      }
+    ],
+    "graphql-e1": [
+      {
+        "point": 1,
+        "patterns": [
+          "\\bgraphql (?:needs|uses|has) (?:a separate|one) endpoint (?:per|for each|for every) resource"
+        ],
+        "note": "GraphQL usually exposes a single endpoint."
+      }
+    ],
+    "graphql-m1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\bqueries (?:change|modify|update|write) (?:the )?data",
+          "\\bmutations? (?:only )?(?:read|fetch) (?:the )?data"
+        ],
+        "note": "Queries read data; mutations change it."
+      }
+    ],
+    "sql-e1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\binner join returns? all (?:the )?rows",
+          "\\binner join (?:keeps|includes) (?:the )?(?:rows|records) (?:with no|without a?) match"
+        ],
+        "note": "INNER JOIN returns only the rows that match in both tables."
+      },
+      {
+        "point": 1,
+        "patterns": [
+          "\\bleft join returns? only (?:the )?(?:rows|records) that match",
+          "\\bleft join returns? only (?:the )?match(?:ing|ed)"
+        ],
+        "note": "LEFT JOIN returns every row from the left table, matched or not."
+      },
+      {
+        "point": 2,
+        "patterns": [
+          "\\binner join (?:fills|puts|uses|adds) nulls?"
+        ],
+        "note": "NULLs for missing matches come from outer joins such as LEFT JOIN."
+      }
+    ],
+    "sql-m1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\bwhere (?:filters|is applied|runs) after (?:the )?group",
+          "\\bhaving (?:filters|is applied|runs) before (?:the )?group"
+        ],
+        "note": "WHERE filters rows before grouping; HAVING filters groups after."
+      },
+      {
+        "point": 2,
+        "patterns": [
+          "\\bwhere can use aggregate",
+          "\\bhaving can(?:not|'t) use aggregate"
+        ],
+        "note": "Aggregate conditions belong in HAVING, not WHERE."
+      }
+    ],
+    "sql-h1": [
+      {
+        "point": 1,
+        "patterns": [
+          "\\bindex(?:es)? (?:make|makes|speed up) (?:inserts|writes|updates) faster",
+          "\\bindex(?:es)? (?:have|has) no (?:cost|downside|overhead)",
+          "\\bmore indexes? (?:is|are) always better"
+        ],
+        "note": "Indexes speed up reads but slow down writes and use storage."
+      }
+    ],
+    "sqlite-e1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\bsqlite (?:needs|requires|runs (?:as|on)) (?:a )?(?:separate )?(?:database )?server"
+        ],
+        "note": "SQLite is serverless: the database is a single file."
+      },
+      {
+        "point": 2,
+        "patterns": [
+          "\\bsqlite (?:is|is good|is great|works well) (?:for|at|with) (?:many|lots of|high) concurrent writ"
+        ],
+        "note": "SQLite allows one writer at a time, so it is not ideal for many concurrent writers."
+      }
+    ],
+    "sqlite-m1": [
+      {
+        "point": 2,
+        "patterns": [
+          "\\bsqlite (?:always )?enforces? (?:column )?types strictly by default"
+        ],
+        "note": "SQLite uses type affinity; strict typing needs STRICT tables."
+      }
+    ],
+    "sqlite-h1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\bsqlite (?:allows|supports) (?:many|multiple) (?:simultaneous |concurrent )?writers"
+        ],
+        "note": "SQLite allows only one writer at a time."
+      }
+    ],
+    "firebase-e1": [
+      {
+        "point": 1,
+        "patterns": [
+          "\\bfirestore (?:is|is a) (?:relational|sql) database"
+        ],
+        "note": "Firestore is a NoSQL document database."
+      }
+    ],
+    "firebase-m1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\bfirestore supports? joins",
+          "\\bfirestore (?:uses|stores data in) (?:sql )?tables (?:and|with) (?:rows|joins)"
+        ],
+        "note": "Firestore stores documents in collections and has no SQL joins."
+      }
+    ],
+    "firebase-h1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\bsecurity rules (?:are|is) (?:not needed|optional|unnecessary)",
+          "\\bclient[- ]side (?:validation|checks) (?:is|are) enough"
+        ],
+        "note": "Clients reach the database directly, so security rules are essential."
+      }
+    ],
+    "aws-e1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\bs3 (?:provides|is|gives) (?:a )?virtual (?:servers?|machines?)",
+          "\\bec2 (?:stores|is (?:for|used for) storing) (?:files|objects)"
+        ],
+        "note": "EC2 provides virtual servers; S3 stores objects."
+      }
+    ],
+    "aws-m1": [
+      {
+        "point": 1,
+        "patterns": [
+          "\\bleast privilege means (?:giving )?(?:full|all|maximum|admin)",
+          "\\bgive (?:everyone|all users) (?:full |admin(?:istrator)? )access"
+        ],
+        "note": "Least privilege means granting only the permissions that are needed."
+      },
+      {
+        "point": 2,
+        "patterns": [
+          "\\b(?:hard-?code|embed|put) (?:the )?(?:aws )?(?:access )?keys? in (?:the )?(?:source )?code"
+        ],
+        "note": "Avoid long-lived keys in code; use roles."
+      }
+    ],
+    "aws-h1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\b(?:a )?single availability zone (?:is enough|gives high availability)"
+        ],
+        "note": "High availability needs multiple Availability Zones."
+      }
+    ],
+    "azure-e1": [
+      {
+        "point": 2,
+        "patterns": [
+          "\\bdeleting (?:a )?resource group (?:keeps|does not delete|doesn't delete) (?:its|the) resources"
+        ],
+        "note": "Deleting a resource group deletes everything in it."
+      }
+    ],
+    "azure-m1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\bapp service gives (?:you )?full (?:control of the )?os",
+          "\\bvms? (?:are|is) (?:a )?(?:paas|fully managed)"
+        ],
+        "note": "App Service is managed PaaS; VMs (IaaS) give full OS control."
+      }
+    ],
+    "azure-h1": [
+      {
+        "point": 1,
+        "patterns": [
+          "\\b(?:store|keep|put) (?:the )?(?:secrets|passwords|keys|credentials) in (?:the )?(?:source )?(?:code|repo|repository)"
+        ],
+        "note": "Store secrets in Key Vault and use managed identities, not code."
+      }
+    ],
+    "gcp-e1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\bcloud storage (?:provides|is|gives) (?:a )?virtual machines?",
+          "\\bcompute engine (?:stores|is for storing) (?:files|objects)"
+        ],
+        "note": "Compute Engine provides VMs; Cloud Storage stores objects."
+      }
+    ],
+    "gcp-m1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\bcloud run (?:requires|needs) (?:you to )?(?:manage|managing) (?:the )?servers?"
+        ],
+        "note": "Cloud Run is serverless: you do not manage servers."
+      },
+      {
+        "point": 2,
+        "patterns": [
+          "\\bcloud run (?:is )?(?:best|good|ideal|meant) for stateful"
+        ],
+        "note": "Cloud Run suits stateless services."
+      }
+    ],
+    "docker-e1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\bimages? (?:is|are) (?:a |the )?running",
+          "\\bcontainers? (?:is|are) (?:a |the )?(?:read-only )?templates?"
+        ],
+        "note": "An image is the read-only template; a container is a running instance of it."
+      },
+      {
+        "point": 1,
+        "patterns": [
+          "\\bimages? (?:is|are) (?:a |an )?(?:running )?instances? of (?:a |the )?containers?"
+        ],
+        "note": "A container is an instance of an image, not the other way round."
+      },
+      {
+        "point": 2,
+        "patterns": [
+          "\\bonly one (?:image per container|container (?:can run )?(?:per|from (?:an?|one|each)) image)"
+        ],
+        "note": "Many containers can run from one image."
+      }
+    ],
+    "docker-m1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\buse (?:the )?(?:largest|biggest|full(?:est)?) base image"
+        ],
+        "note": "Prefer small base images."
+      },
+      {
+        "point": 1,
+        "patterns": [
+          "\\bcopy (?:all|the whole|the entire) (?:source|code|project) (?:first|before installing)"
+        ],
+        "note": "Copy dependency files first so the dependency layer stays cached."
+      }
+    ],
+    "docker-h1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\bdata (?:written )?(?:inside|in) (?:a )?container (?:is kept|persists|survives) (?:after|when) (?:it is )?(?:removed|deleted)"
+        ],
+        "note": "Data in a container's writable layer is lost when the container is removed; use volumes."
+      }
+    ],
+    "k8s-e1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\bpods? can only (?:run|have|hold|contain) one container"
+        ],
+        "note": "A Pod can run one or more containers."
+      },
+      {
+        "point": 2,
+        "patterns": [
+          "\\bservices? (?:run|runs|contain|contains) (?:the )?containers"
+        ],
+        "note": "A Service provides a stable network address; Pods run the containers."
+      }
+    ],
+    "k8s-m1": [
+      {
+        "point": 1,
+        "patterns": [
+          "\\bsecrets? (?:are|is) encrypted by default"
+        ],
+        "note": "Kubernetes Secrets are base64-encoded; encryption at rest must be enabled."
+      },
+      {
+        "point": 0,
+        "patterns": [
+          "\\b(?:put|store|keep) (?:the )?(?:passwords|secrets|credentials) in (?:a )?configmaps?"
+        ],
+        "note": "Sensitive values belong in Secrets, not ConfigMaps."
+      }
+    ],
+    "k8s-h1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\breadiness probes? (?:restart|restarts|kill|kills)",
+          "\\bliveness probes? (?:only )?(?:controls?|decides?) (?:whether|if) (?:a pod )?(?:receives?|gets) traffic"
+        ],
+        "note": "Liveness probes restart containers; readiness probes control traffic."
+      }
+    ],
+    "terraform-e1": [
+      {
+        "point": 2,
+        "patterns": [
+          "\\bterraform (?:only )?works? (?:only )?with aws"
+        ],
+        "note": "Terraform supports many providers."
+      }
+    ],
+    "terraform-m1": [
+      {
+        "point": 2,
+        "patterns": [
+          "\\bcommit (?:the )?(?:terraform )?state (?:file )?(?:to|into|in) git",
+          "\\bstate (?:files? )?(?:never|does not|doesn't) contains? secrets"
+        ],
+        "note": "State can contain secrets: store it remotely and protect it, not in Git."
+      }
+    ],
+    "jenkins-e1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\bjenkins (?:is|is a) (?:version control|source control|code hosting)"
+        ],
+        "note": "Jenkins automates builds, tests and deployments; it is not version control."
+      }
+    ],
+    "jenkins-m1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\bjenkinsfiles? (?:is|are) (?:stored|kept|configured) only in the (?:jenkins )?(?:ui|web interface)"
+        ],
+        "note": "A Jenkinsfile lives in the repository."
+      }
+    ],
+    "jenkins-h1": [
+      {
+        "point": 1,
+        "patterns": [
+          "\\bhard-?code (?:the )?(?:credentials|passwords|secrets|tokens)"
+        ],
+        "note": "Inject credentials from the store instead of hard-coding them."
+      }
+    ],
+    "cicd-e1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\bcontinuous integration means (?:automatically )?deploy",
+          "\\bcontinuous delivery means (?:merging|integrating) code"
+        ],
+        "note": "CI is about merging and testing often; CD keeps code deployable."
+      }
+    ],
+    "cicd-h1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\bblue-?green (?:deployment )?(?:means|is) (?:sending|routing|releasing) (?:to )?(?:a )?(?:small )?(?:percentage|subset)"
+        ],
+        "note": "Sending a small share of traffic to a new version is a canary release, not blue-green."
+      },
+      {
+        "point": 1,
+        "patterns": [
+          "\\bcanary (?:release )?(?:means|is) (?:switching|swapping) (?:all|the whole|the entire) (?:traffic|environment)"
+        ],
+        "note": "Switching all traffic between two environments is blue-green, not canary."
+      }
+    ],
+    "linux-e1": [
+      {
+        "point": 2,
+        "patterns": [
+          "\\bchmod changes (?:the )?owner",
+          "\\bchown changes (?:the )?permissions?"
+        ],
+        "note": "chmod changes permissions; chown changes ownership."
+      }
+    ],
+    "linux-h1": [
+      {
+        "point": 1,
+        "patterns": [
+          "\\bjournalctl (?:starts|enables|stops) services?"
+        ],
+        "note": "journalctl reads logs; systemctl manages services."
+      }
+    ],
+    "net-e1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\btcp (?:is|is a) connectionless"
+        ],
+        "note": "TCP is connection-oriented and reliable."
+      },
+      {
+        "point": 1,
+        "patterns": [
+          "\\budp (?:is|is a) (?:connection-oriented|reliable)",
+          "\\budp guarantees? (?:delivery|order)"
+        ],
+        "note": "UDP is connectionless and does not guarantee delivery or order."
+      }
+    ],
+    "net-h1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\b/24 (?:has|gives|means) 24 (?:hosts|addresses)",
+          "\\b/\\d+ (?:is|means|gives) the number of hosts"
+        ],
+        "note": "The prefix length is the number of network bits; a /24 has 256 addresses."
+      }
+    ],
+    "monitoring-e1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\btraces? (?:are|is) numeric measurements",
+          "\\bmetrics (?:are|is) (?:text )?records of (?:individual )?events"
+        ],
+        "note": "Metrics are numeric measurements; logs record events; traces follow requests."
+      }
+    ],
+    "monitoring-m1": [
+      {
+        "point": 1,
+        "patterns": [
+          "\\balert on every (?:error|log line|metric|warning)"
+        ],
+        "note": "Alerting on everything causes fatigue; alert on user-facing symptoms."
+      }
+    ],
+    "monitoring-h1": [
+      {
+        "point": 1,
+        "patterns": [
+          "\\bslas? (?:is|are) (?:the )?(?:internal )?target",
+          "\\bslos? (?:is|are) (?:a )?(?:legal|contractual)",
+          "\\bslis? (?:is|are) (?:an? )?agreement"
+        ],
+        "note": "SLI is the measurement, SLO the target, SLA the agreement with consequences."
+      }
+    ],
+    "git-e1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\brebase creates? (?:a )?merge commit",
+          "\\bmerge rewrites? (?:the )?(?:commit )?history"
+        ],
+        "note": "Merge adds a merge commit; rebase rewrites history into a linear sequence."
+      },
+      {
+        "point": 2,
+        "patterns": [
+          "\\brebas\\w* (?:shared|public) branches? (?:is|are) (?:fine|safe|recommended)"
+        ],
+        "note": "Avoid rebasing branches others are using."
+      }
+    ],
+    "git-h1": [
+      {
+        "point": 2,
+        "patterns": [
+          "\\beveryone (?:should )?push(?:es)? directly to main"
+        ],
+        "note": "Protect main and merge through reviewed pull requests."
+      }
+    ],
+    "ml-e1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\bsupervised learning (?:uses|works (?:on|with)) unlabell?ed",
+          "\\bclassification is (?:an? )?unsupervised"
+        ],
+        "note": "Supervised learning uses labelled data (classification, regression)."
+      },
+      {
+        "point": 1,
+        "patterns": [
+          "\\bunsupervised learning (?:uses|needs|requires) labell?ed",
+          "\\bclustering is (?:a )?supervised"
+        ],
+        "note": "Unsupervised learning works on unlabelled data (clustering)."
+      }
+    ],
+    "ml-m1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\boverfitting (?:means|is when) (?:the )?model (?:is )?too simple"
+        ],
+        "note": "Overfitting is fitting the training data too closely; a too-simple model underfits."
+      },
+      {
+        "point": 1,
+        "patterns": [
+          "\\bunderfitting (?:means|is when) (?:the )?model (?:memori[sz]es|fits the training data too)"
+        ],
+        "note": "Underfitting is a model too simple to capture the patterns."
+      },
+      {
+        "point": 2,
+        "patterns": [
+          "\\badd(?:ing)? more (?:layers|parameters|complexity) (?:fixes|reduces|prevents) overfitting"
+        ],
+        "note": "More complexity usually increases overfitting."
+      }
+    ],
+    "ml-h1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\baccuracy (?:is|is the) (?:the )?best (?:metric )?(?:for|on|with) imbalanced",
+          "\\baccuracy (?:is enough|works well) (?:for|on|with) imbalanced"
+        ],
+        "note": "Accuracy is misleading on imbalanced data."
+      }
+    ],
+    "dl-e1": [
+      {
+        "point": 1,
+        "patterns": [
+          "\\bactivation functions? (?:make|keep) (?:the )?(?:network|model) linear"
+        ],
+        "note": "Activation functions add non-linearity."
+      }
+    ],
+    "dl-m1": [
+      {
+        "point": 1,
+        "patterns": [
+          "\\bgradients? (?:are|is) computed (?:in the )?forwards?\\b",
+          "\\bbackpropagation (?:updates|changes) (?:the )?(?:inputs|input data)"
+        ],
+        "note": "Gradients flow backwards with the chain rule and update the weights."
+      }
+    ],
+    "dl-h1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\bdropout (?:is used|is applied|stays on|is active) (?:at|during) (?:inference|test time|prediction)"
+        ],
+        "note": "Dropout is active only during training."
+      },
+      {
+        "point": 2,
+        "patterns": [
+          "\\bearly stopping (?:on|uses|monitors) the (?:training|test) set"
+        ],
+        "note": "Early stopping monitors a validation set."
+      }
+    ],
+    "nlp-e1": [
+      {
+        "point": 1,
+        "patterns": [
+          "\\btokens? (?:are|is) always (?:whole )?words"
+        ],
+        "note": "Tokens can be words, subwords or characters."
+      }
+    ],
+    "nlp-m1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\b(?:word )?embeddings? (?:are|is) (?:sparse )?one-?hot"
+        ],
+        "note": "Embeddings are dense vectors, unlike sparse one-hot encodings."
+      }
+    ],
+    "nlp-h1": [
+      {
+        "point": 2,
+        "patterns": [
+          "\\battention (?:processes|reads|handles) (?:the )?(?:tokens|words) (?:one at a time|sequentially)"
+        ],
+        "note": "Attention looks at all tokens at once, which allows parallel computation."
+      }
+    ],
+    "cv-e1": [
+      {
+        "point": 1,
+        "patterns": [
+          "\\bpooling (?:increases|enlarges|expands) (?:the )?(?:spatial )?(?:size|resolution)"
+        ],
+        "note": "Pooling reduces spatial size."
+      }
+    ],
+    "cv-m1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\baugment\\w* (?:the )?test (?:set|data|images)"
+        ],
+        "note": "Augment the training data, not the test data used for evaluation."
+      }
+    ],
+    "cv-h1": [
+      {
+        "point": 1,
+        "patterns": [
+          "\\bdetection (?:labels?|classifies) (?:each|every) pixel",
+          "\\bclassification (?:finds|draws|locates) (?:the )?(?:objects|bounding)"
+        ],
+        "note": "Detection draws bounding boxes; segmentation labels pixels."
+      },
+      {
+        "point": 2,
+        "patterns": [
+          "\\bsegmentation (?:only )?(?:draws|uses|gives) (?:only )?bounding boxes"
+        ],
+        "note": "Segmentation labels each pixel rather than drawing boxes."
+      }
+    ],
+    "tf-e1": [
+      {
+        "point": 2,
+        "patterns": [
+          "\\b(?:fit|train) (?:the model )?on (?:the )?test (?:data|set)"
+        ],
+        "note": "Train on training data and keep the test data for evaluation."
+      }
+    ],
+    "pytorch-m1": [
+      {
+        "point": 1,
+        "patterns": [
+          "\\b(?:optimizer\\.)?step(?:\\(\\))? (?:is called )?before (?:loss\\.)?backward",
+          "\\b(?:no need to|never need to) (?:call )?zero_grad"
+        ],
+        "note": "Call zero_grad, then backward, then optimizer.step."
+      }
+    ],
+    "pytorch-h1": [
+      {
+        "point": 1,
+        "patterns": [
+          "\\bmodel\\.eval\\(\\)? (?:disables|turns off|stops) (?:the )?gradient",
+          "\\bno_grad (?:enables|turns on|is needed for) (?:gradient|training)"
+        ],
+        "note": "eval() changes layer behaviour; torch.no_grad() disables gradient tracking."
+      }
+    ],
+    "sklearn-e1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\b(?:fit|train) (?:the model )?on (?:the )?test (?:data|set)"
+        ],
+        "note": "Fit on training data; evaluate on held-out test data."
+      }
+    ],
+    "sklearn-m1": [
+      {
+        "point": 1,
+        "patterns": [
+          "\\b(?:fit|scale|normali[sz]e) (?:the )?(?:scaler |data )?(?:on|using) (?:the )?(?:whole|entire|full) (?:dataset|data)"
+        ],
+        "note": "Fitting preprocessing on all data before splitting leaks information; pipelines prevent this."
+      }
+    ],
+    "sklearn-h1": [
+      {
+        "point": 2,
+        "patterns": [
+          "\\btune (?:the )?(?:hyperparameters )?(?:on|using) (?:the )?test set"
+        ],
+        "note": "Tune with cross-validation and keep the test set for the final check."
+      }
+    ],
+    "pandas-e1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\bseries (?:is|are) (?:a )?two-?dimensional"
+        ],
+        "note": "A Series is one-dimensional."
+      },
+      {
+        "point": 1,
+        "patterns": [
+          "\\bdataframes? (?:is|are) (?:a )?one-?dimensional"
+        ],
+        "note": "A DataFrame is two-dimensional."
+      }
+    ],
+    "pandas-m1": [
+      {
+        "point": 1,
+        "patterns": [
+          "\\bdropna fills",
+          "\\bfillna (?:drops|removes|deletes)"
+        ],
+        "note": "dropna removes missing values; fillna fills them."
+      }
+    ],
+    "pandas-h1": [
+      {
+        "point": 2,
+        "patterns": [
+          "\\bgroupby (?:joins|merges) (?:two )?dataframes"
+        ],
+        "note": "merge joins DataFrames; groupby groups rows within one DataFrame."
+      }
+    ],
+    "numpy-e1": [
+      {
+        "point": 2,
+        "patterns": [
+          "\\bnumpy (?:uses|runs) (?:a )?python loops? (?:over|for) (?:each|every) element"
+        ],
+        "note": "NumPy's vectorised operations avoid Python-level loops."
+      }
+    ],
+    "numpy-m1": [
+      {
+        "point": 1,
+        "patterns": [
+          "\\bbroadcasting (?:copies|duplicates) (?:the )?(?:data|arrays?)"
+        ],
+        "note": "Broadcasting stretches dimensions without copying data."
+      },
+      {
+        "point": 2,
+        "patterns": [
+          "\\bcompar\\w* (?:the )?dimensions from the left"
+        ],
+        "note": "Broadcasting compares dimensions from the right."
+      }
+    ],
+    "numpy-h1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\b(?:basic )?slic\\w* (?:always )?(?:returns?|creates?|makes?) (?:a )?(?:new )?cop(?:y|ies)"
+        ],
+        "note": "Basic slicing returns a view that shares memory."
+      },
+      {
+        "point": 1,
+        "patterns": [
+          "\\bchanging (?:a )?view (?:does not|doesn't|never) (?:change|affect)"
+        ],
+        "note": "Changing a view changes the original array."
+      },
+      {
+        "point": 2,
+        "patterns": [
+          "\\bfancy indexing returns? (?:a )?view"
+        ],
+        "note": "Fancy indexing returns a copy."
+      }
+    ],
+    "stats-e1": [
+      {
+        "point": 1,
+        "patterns": [
+          "\\bmean is (?:more )?robust to outliers",
+          "\\bmedian is (?:the most |more |very )?(?:sensitive|affected) (?:to|by) outliers"
+        ],
+        "note": "The median is robust to outliers; the mean is not."
+      },
+      {
+        "point": 2,
+        "patterns": [
+          "\\bmode is the (?:middle|average)"
+        ],
+        "note": "The mode is the most frequent value."
+      }
+    ],
+    "stats-m1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\bp-?values? (?:is|are|gives|means) the probability (?:that )?the null (?:hypothesis )?is true",
+          "\\bp-?values? (?:is|are|gives) the probability (?:that )?the (?:alternative|hypothesis) is (?:true|correct)"
+        ],
+        "note": "A p-value is the probability of data this extreme if the null is true, not the probability the null is true."
+      },
+      {
+        "point": 2,
+        "patterns": [
+          "\\b(?:small|low) p-?values? (?:proves?|confirms?)"
+        ],
+        "note": "A small p-value is evidence, not proof."
+      }
+    ],
+    "stats-h1": [
+      {
+        "point": 1,
+        "patterns": [
+          "\\bcorrelation (?:proves|implies|means|shows|establishes) causation"
+        ],
+        "note": "Correlation does not by itself establish causation."
+      }
+    ],
+    "da-m1": [
+      {
+        "point": 2,
+        "patterns": [
+          "\\balways (?:delete|remove|drop) (?:all )?(?:the )?outliers"
+        ],
+        "note": "Investigate outliers before deciding to remove, cap or keep them."
+      }
+    ],
+    "excel-e1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\brelative references? (?:use|uses|have|has) (?:a )?\\$",
+          "\\brelative references? (?:stay|stays) fixed"
+        ],
+        "note": "Relative references change when copied; $ makes a reference absolute."
+      },
+      {
+        "point": 1,
+        "patterns": [
+          "\\babsolute references? change"
+        ],
+        "note": "Absolute references stay fixed when a formula is copied."
+      }
+    ],
+    "excel-m1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\bvlookup can (?:look|search) (?:to the )?left"
+        ],
+        "note": "VLOOKUP only looks to the right; use XLOOKUP or INDEX/MATCH to look left."
+      }
+    ],
+    "excel-h1": [
+      {
+        "point": 2,
+        "patterns": [
+          "\\bpivot tables? (?:update|refresh)(?:es)? automatically"
+        ],
+        "note": "Pivot tables must be refreshed after the source data changes."
+      }
+    ],
+    "powerbi-h1": [
+      {
+        "point": 1,
+        "patterns": [
+          "\\bmeasures? (?:are|is) (?:computed|calculated) (?:per|for each) row and stored"
+        ],
+        "note": "Measures are evaluated at query time in the filter context."
+      },
+      {
+        "point": 2,
+        "patterns": [
+          "\\bcalculated columns? (?:are|is) (?:computed|calculated) at query time"
+        ],
+        "note": "Calculated columns are computed per row and stored."
+      }
+    ],
+    "tableau-e1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\bdimensions? (?:are|is) (?:numeric values?|aggregated)"
+        ],
+        "note": "Dimensions are categorical fields used to group."
+      },
+      {
+        "point": 1,
+        "patterns": [
+          "\\bmeasures? (?:are|is) categorical"
+        ],
+        "note": "Measures are numeric values that are aggregated."
+      }
+    ],
+    "ds-e1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\blinked lists? (?:allow|have|give|offer) (?:o\\(1\\)|constant[- ]time) (?:random |index(?:ed)? )?access",
+          "\\barrays? (?:allow|have|need) (?:o\\(n\\)|linear[- ]time) access by index"
+        ],
+        "note": "Arrays give O(1) access by index; linked lists need O(n)."
+      },
+      {
+        "point": 2,
+        "patterns": [
+          "\\blinked lists? (?:use|are stored in|need) contiguous memory"
+        ],
+        "note": "Arrays use contiguous memory; linked lists use separate nodes."
+      }
+    ],
+    "ds-m1": [
+      {
+        "point": 2,
+        "patterns": [
+          "\\bhash tables? (?:have|give|take) (?:an? )?(?:average )?o\\(n\\) (?:lookup|insert)",
+          "\\bhash tables? (?:keep|store) (?:the )?(?:keys|items) (?:in )?sorted"
+        ],
+        "note": "Hash tables give average O(1) operations and do not keep keys sorted."
+      }
+    ],
+    "ds-h1": [
+      {
+        "point": 1,
+        "patterns": [
+          "\\b(?:peek|getting the (?:min|max)\\w*) (?:is|takes) o\\(log n\\)",
+          "\\bheaps? (?:are|is) (?:fully )?sorted"
+        ],
+        "note": "Peek is O(1); a heap is only partially ordered."
+      }
+    ],
+    "algo-e1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\bbig-?o (?:measures|gives|tells you) (?:the )?exact (?:running )?time"
+        ],
+        "note": "Big-O describes growth rate, not exact time."
+      }
+    ],
+    "algo-m1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\bbinary search (?:works|can be used) (?:on|with|for) unsorted"
+        ],
+        "note": "Binary search requires sorted data."
+      },
+      {
+        "point": 2,
+        "patterns": [
+          "\\bbinary search (?:is|takes|runs in) o\\(n\\)"
+        ],
+        "note": "Binary search is O(log n)."
+      }
+    ],
+    "algo-h1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\bdynamic programming (?:is|means) (?:the same as )?(?:a )?(?:greedy|brute[- ]force)"
+        ],
+        "note": "Dynamic programming reuses solutions to overlapping subproblems; it is neither greedy nor brute force."
+      }
+    ],
+    "selenium-m1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\bimplicit waits? (?:wait|waits) for a specific condition"
+        ],
+        "note": "Implicit waits set a global timeout; explicit waits wait for a condition."
+      },
+      {
+        "point": 1,
+        "patterns": [
+          "\\bexplicit waits? (?:apply|applies|set|sets) a global"
+        ],
+        "note": "Explicit waits target one condition, not a global timeout."
+      },
+      {
+        "point": 2,
+        "patterns": [
+          "\\buse (?:thread\\.sleep|time\\.sleep|fixed sleeps?) (?:instead|everywhere|for (?:all )?waits)"
+        ],
+        "note": "Fixed sleeps make tests slow and flaky."
+      }
+    ],
+    "figma-e1": [
+      {
+        "point": 1,
+        "patterns": [
+          "\\binstances? (?:do not|don't|never) update"
+        ],
+        "note": "Instances update when the main component changes."
+      }
+    ],
+    "wireframe-h1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\bwireframes? (?:are|is) (?:a )?high[- ]fidelity"
+        ],
+        "note": "Wireframes are low fidelity."
+      },
+      {
+        "point": 2,
+        "patterns": [
+          "\\bmockups? (?:are|is) (?:fully )?(?:interactive|clickable)"
+        ],
+        "note": "Mockups are static; prototypes add interaction."
+      }
+    ],
+    "proto-m1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\buse high[- ]fidelity (?:prototypes? )?for (?:early|rough) ideas"
+        ],
+        "note": "Low-fidelity prototypes suit early ideas."
+      }
+    ],
+    "ur-e1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\bqualitative (?:research )?(?:measures|counts) how many"
+        ],
+        "note": "Qualitative research explores why; quantitative measures how many."
+      },
+      {
+        "point": 1,
+        "patterns": [
+          "\\bquantitative (?:research )?explores why"
+        ],
+        "note": "Quantitative research measures how many or how much."
+      }
+    ],
+    "ur-m1": [
+      {
+        "point": 1,
+        "patterns": [
+          "\\bask leading questions"
+        ],
+        "note": "Ask open, non-leading questions."
+      }
+    ],
+    "agile-e1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\bdeliver (?:everything|the whole (?:product|project)) at (?:the )?(?:end|once)"
+        ],
+        "note": "Agile delivers in small increments."
+      }
+    ],
+    "agile-m1": [
+      {
+        "point": 2,
+        "patterns": [
+          "\\bretrospectives? (?:is|are) (?:held )?at the (?:start|beginning)"
+        ],
+        "note": "The review and retrospective happen at the end of the sprint."
+      }
+    ],
+    "mr-e1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\bprimary research uses existing"
+        ],
+        "note": "Primary research collects new data."
+      },
+      {
+        "point": 1,
+        "patterns": [
+          "\\bsecondary research (?:collects|gathers) new"
+        ],
+        "note": "Secondary research uses existing data."
+      }
+    ],
+    "mr-h1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\bsom is (?:the )?total",
+          "\\btam is (?:the )?(?:share|portion|part) you can (?:realistically )?(?:capture|obtain|win)"
+        ],
+        "note": "TAM is the total market; SOM is the share you can realistically obtain."
+      }
+    ],
+    "fm-e1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\bincome statement shows (?:the )?(?:assets|liabilities)"
+        ],
+        "note": "The income statement shows revenue, costs and profit."
+      },
+      {
+        "point": 1,
+        "patterns": [
+          "\\bbalance sheet shows (?:the )?(?:revenue|profit)"
+        ],
+        "note": "The balance sheet shows assets, liabilities and equity."
+      },
+      {
+        "point": 2,
+        "patterns": [
+          "\\bprofit (?:is|equals) (?:the same as )?cash"
+        ],
+        "note": "Profit is not the same as cash flow."
+      }
+    ],
+    "fm-h1": [
+      {
+        "point": 1,
+        "patterns": [
+          "\\bfuture cash (?:flows? )?(?:is|are) worth more than (?:cash|money) today"
+        ],
+        "note": "Future cash is worth less today, which is why it is discounted."
+      }
+    ],
+    "seo-e1": [
+      {
+        "point": 0,
+        "patterns": [
+          "\\bkeyword stuffing (?:helps|improves|is good)"
+        ],
+        "note": "Keyword stuffing hurts rankings; write relevant content."
+      }
+    ]
+  }
+}

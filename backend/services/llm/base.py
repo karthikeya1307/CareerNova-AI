@@ -26,7 +26,8 @@ PRIVACY_DISCLOSURE = (
     "With AI-assisted writing, the content of your resume that is relevant to this "
     "document (summary, skills, education, experience and project descriptions) and the "
     "internship details are sent to an external language-model provider ({provider}). "
-    "Your name, e-mail address, phone number, links and location are never sent. "
+    "Your name, e-mail address, phone number, links, location, postal address and PIN code "
+    "are never sent: they are removed from the request first. "
     "Every generated statement is checked against your resume; unsupported statements "
     "are replaced automatically."
 )

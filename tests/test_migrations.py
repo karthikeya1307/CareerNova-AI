@@ -24,6 +24,7 @@ PHASE_2 = "b7e3d1f4a2c8"
 PHASE_3 = "c4f8a9e2b6d1"
 PHASE_4 = "d5a1c7e3f9b2"
 PHASE_5 = "e7b2d4f6a8c1"
+PHASE_6 = "f3c9e1a5b7d2"
 
 
 @pytest.fixture
@@ -51,7 +52,8 @@ def assert_no_drift(config):
 
 def test_single_linear_head(alembic_config):
     script = ScriptDirectory.from_config(alembic_config)
-    assert script.get_heads() == [PHASE_5]
+    assert script.get_heads() == [PHASE_6]
+    assert script.get_revision(PHASE_6).down_revision == PHASE_5
     assert script.get_revision(PHASE_5).down_revision == PHASE_4
     assert script.get_revision(PHASE_4).down_revision == PHASE_3
     assert script.get_revision(PHASE_3).down_revision == PHASE_2
@@ -121,7 +123,19 @@ def test_migrations_round_trip_without_drift(alembic_config):
     command.downgrade(alembic_config, PHASE_4)
     assert "content_json" not in columns("generated_documents")
     assert "generated_document_versions" not in inspect(database.engine).get_table_names()
-    command.upgrade(alembic_config, "head")
+    command.upgrade(alembic_config, PHASE_5)
     assert "generated_document_versions" in inspect(database.engine).get_table_names()
+    assert "interview_answers" not in inspect(database.engine).get_table_names()
+
+    # Phase 6: upgrade, downgrade, upgrade again.
+    command.upgrade(alembic_config, PHASE_6)
+    assert {"resume_id", "mode", "question_mix", "answered_count", "summary"} <= columns("interview_sessions")
+    assert {"category", "position", "key_points", "suggested_answer", "evaluation"} <= columns("interview_questions")
+    assert "interview_answers" in inspect(database.engine).get_table_names()
+    command.downgrade(alembic_config, PHASE_5)
+    assert "mode" not in columns("interview_sessions")
+    assert "interview_answers" not in inspect(database.engine).get_table_names()
+    command.upgrade(alembic_config, "head")
+    assert "interview_answers" in inspect(database.engine).get_table_names()
 
     assert_no_drift(alembic_config)

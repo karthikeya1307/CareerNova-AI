@@ -14,7 +14,9 @@ and the student's profile and get stable IDs:
 
 Contact details (name, e-mail, phone, links, location) are kept separately
 in ``CandidateFacts.contact`` and are NEVER part of ``facts``, so they can
-never be sent to an external LLM.
+never be sent to an external LLM. The parsed postal address is kept in
+``CandidateFacts.address`` (Phase 6) only so that it can be removed from
+outgoing AI requests; it is not used in any generated content.
 """
 
 from __future__ import annotations
@@ -69,6 +71,7 @@ class CandidateFacts:
     skills: list[str]                       # canonical, from resume_skills
     degree: str | None = None
     by_id: dict[str, Fact] = field(default_factory=dict)
+    address: str | None = None              # only used to scrub AI requests
 
     def __post_init__(self):
         self.by_id = {f.id: f for f in self.facts}
@@ -143,4 +146,6 @@ def build_fact_base(db: Session, resume: Resume) -> CandidateFacts:
     add("lang", "language", _entry_texts(data.get("languages")))
 
     skills = [skill.name for _, skill in get_resume_skill_rows(db, resume.resume_id)]
-    return CandidateFacts(resume.resume_id, contact, facts, skills, degree)
+    address = data.get("address")
+    return CandidateFacts(resume.resume_id, contact, facts, skills, degree,
+                          address=address if isinstance(address, str) and address.strip() else None)

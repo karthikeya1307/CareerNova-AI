@@ -39,6 +39,9 @@ AI_CAREER_COMPANION/
 │   ├── init_db.py
 │   ├── manage.py
 │   ├── data/
+│   │   ├── behavioral_questions.json      (12 HR/behavioral questions)
+│   │   ├── interview_misconceptions.json  (curated common wrong statements)
+│   │   ├── interview_question_bank.json   (207 technical questions, 69 skills)
 │   │   ├── internships.json      (180 fictional postings)
 │   │   ├── learning_plans.json   (curated, versioned learning plans)
 │   │   └── faiss_index/          (generated, gitignored)
@@ -47,6 +50,7 @@ AI_CAREER_COMPANION/
 │   │   ├── auth.py
 │   │   ├── documents.py
 │   │   ├── internships.py
+│   │   ├── interviews.py
 │   │   ├── matches.py
 │   │   ├── profiles.py
 │   │   ├── skill_gaps.py
@@ -54,12 +58,14 @@ AI_CAREER_COMPANION/
 │   ├── schemas/
 │   │   ├── document_schema.py
 │   │   ├── internship_schema.py
+│   │   ├── interview_schema.py
 │   │   ├── match_schema.py
 │   │   ├── skill_gap_schema.py
 │   │   ├── user_schema.py
 │   │   ├── profile_schema.py
 │   │   └── resume_schema.py
 │   ├── services/
+│   │   ├── answer_evaluator.py
 │   │   ├── ats.py
 │   │   ├── candidate_profile.py
 │   │   ├── compatibility.py
@@ -74,8 +80,12 @@ AI_CAREER_COMPANION/
 │   │   ├── llm/                  (base.py, groq_provider.py)
 │   │   ├── internship_seed.py
 │   │   ├── internship_text.py
+│   │   ├── interview_generator.py
+│   │   ├── interview_service.py
 │   │   ├── learning_plans.py
+│   │   ├── llm_privacy.py
 │   │   ├── matching_agent.py
+│   │   ├── question_bank.py
 │   │   ├── resume_customizer.py
 │   │   ├── resume_parser.py
 │   │   ├── resume_skills.py
@@ -125,7 +135,7 @@ AI_CAREER_COMPANION/
 | A | RAG internship-matching assignment: validation, 10-profile evaluation, documentation (`docs/assignment/`) | ✅ Evaluated: 9/9 system checks, 50/50 results grounded, 373/373 tests pass |
 | 4 | Module 5: Skill gap analysis and recommendation | ✅ Implemented, 417/417 tests pass (incl. all 373 earlier tests). Pending on the development database: migration `d5a1c7e3f9b2` (after the Phase 1–3 migrations) |
 | 5 | Module 6: Resume and cover letter customization (includes the provider-independent LLM service, Groq first) | ✅ Implemented, 489/489 tests pass (incl. all 417 earlier tests); LLM writing off by default. Pending on the development database: migration `e7b2d4f6a8c1` (after the Phase 1–4 migrations) |
-| 6 | Module 7: Interview preparation | Planned |
+| 6 | Module 7: Interview preparation | ✅ Implemented — see the Phase 6 report. Pending on the development database: migration `f3c9e1a5b7d2` (after the Phase 1–5 migrations) |
 | 7 | Module 8: Application tracking | Planned |
 | 8 | Module 9: Conversational career assistant | Planned |
 | 9 | React + Vite frontend, full integration, final documentation | Planned |
@@ -249,7 +259,23 @@ Skills that appear on a re-parsed resume complete their recommendations automati
 | GET | `/documents/{id}/versions` | Version history; `POST .../versions/{v}/restore` restores |
 | GET | `/documents/{id}/download?format=docx\|txt` | Download |
 
-Generation is deterministic by default and uses only facts from the student's own resume and profile. Optional Groq-based writing is off unless configured and must be opted into per document. Name and contact details are never sent, and every generated statement is fact-checked. See `docs/API_DOCUMENTATION.md` section 6D.
+Generation is deterministic by default and uses only facts from the student's own resume and profile. Optional Groq-based writing is off unless configured and must be opted into per document. Name and contact details are never sent: every AI request is scrubbed of name parts, contact details, addresses and PIN codes, then checked again before anything is sent. Every generated statement is fact-checked. See `docs/API_DOCUMENTATION.md` section 6D.
+
+### Interview Preparation APIs (login required, own data only)
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/interviews/question-bank/version` | Question bank versions and coverage |
+| GET | `/interviews/questions/preview` | Preview a question set |
+| POST / GET | `/interviews/sessions` | Start a practice or mock interview / history |
+| GET / DELETE | `/interviews/sessions/{id}` | Session detail / delete |
+| POST | `/interviews/sessions/{id}/questions/{qid}/answers` | Answer (with retries) and get feedback |
+| GET | `/interviews/sessions/{id}/questions/{qid}/answers` | All attempts for a question |
+| POST | `/interviews/sessions/{id}/questions/{qid}/reveal` | Reveal the suggested answer (mock mode) |
+| POST | `/interviews/sessions/{id}/complete` | Finish and get the summary |
+| GET | `/interviews/progress` | Progress over time |
+
+Questions come from a curated bank: 207 technical questions covering all 69 dataset skills, plus 12 behavioral. Project questions are grounded in the student's own resume facts and internship questions in the internship record. Answers are scored with deterministic rubrics and optional local semantic matching (calibrated against vague and off-topic answers). Technical scores measure **key-point coverage, not verified correctness**. Curated checks for common wrong statements (143 questions across 61 skills), "I don't know" detection, keyword-list detection and a STAR story check stop inflated scores. AI feedback is opt-in per answer: names, contact details, addresses and PIN codes are removed before anything is sent, and a final check blocks the request if any remain. See `docs/API_DOCUMENTATION.md` section 6E.
 
 ### Profile APIs
 

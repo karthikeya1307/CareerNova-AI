@@ -905,7 +905,25 @@ class GeneratedDocumentVersion(Base):
 # ============================================================
 
 class InterviewSession(Base):
+    """A practice or mock interview (Phase 6). ``score`` is 0-100."""
+
     __tablename__ = "interview_sessions"
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('started', 'in_progress', 'completed', 'abandoned')",
+            name="ck_interview_sessions_status",
+        ),
+        CheckConstraint(
+            "mode IN ('practice', 'mock')",
+            name="ck_interview_sessions_mode",
+        ),
+        CheckConstraint(
+            "score >= 0 AND score <= 100",
+            name="ck_interview_sessions_score_range",
+        ),
+        Index("ix_interview_sessions_user_status", "user_id", "status"),
+    )
 
     session_id: Mapped[int] = mapped_column(primary_key=True)
 
@@ -933,6 +951,29 @@ class InterviewSession(Base):
         DateTime(timezone=True)
     )
 
+    # Added in Phase 6 (additive migration).
+    resume_id: Mapped[int | None] = mapped_column(
+        ForeignKey("resumes.resume_id", ondelete="SET NULL"), index=True
+    )
+    title: Mapped[str | None] = mapped_column(String(255))
+    mode: Mapped[str | None] = mapped_column(String(20))
+    question_mix: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    difficulty: Mapped[str | None] = mapped_column(String(20))
+    generation_method: Mapped[str | None] = mapped_column(String(20))
+    llm_provider: Mapped[str | None] = mapped_column(String(50))
+    llm_model: Mapped[str | None] = mapped_column(String(100))
+    total_questions: Mapped[int | None] = mapped_column(Integer)
+    answered_count: Mapped[int] = mapped_column(
+        Integer, default=0, server_default=text("0"), nullable=False
+    )
+    summary: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
     user: Mapped["User"] = relationship(
         back_populates="interview_sessions"
     )
@@ -943,11 +984,30 @@ class InterviewSession(Base):
         back_populates="session",
         cascade="all, delete-orphan",
         passive_deletes=True,
+        order_by="InterviewQuestion.position",
     )
 
 
 class InterviewQuestion(Base):
+    """One question in a session. ``score`` is the latest attempt (0-100)."""
+
     __tablename__ = "interview_questions"
+
+    __table_args__ = (
+        CheckConstraint(
+            "category IN ('technical', 'project', 'behavioral', 'internship')",
+            name="ck_interview_questions_category",
+        ),
+        CheckConstraint(
+            "difficulty IN ('easy', 'medium', 'hard')",
+            name="ck_interview_questions_difficulty",
+        ),
+        CheckConstraint(
+            "score >= 0 AND score <= 100",
+            name="ck_interview_questions_score_range",
+        ),
+        UniqueConstraint("session_id", "position", name="uq_interview_question_position"),
+    )
 
     question_id: Mapped[int] = mapped_column(primary_key=True)
 
@@ -973,9 +1033,66 @@ class InterviewQuestion(Base):
         nullable=False,
     )
 
+    # Added in Phase 6 (additive migration).
+    category: Mapped[str | None] = mapped_column(String(20))
+    position: Mapped[int | None] = mapped_column(Integer)
+    skill_id: Mapped[int | None] = mapped_column(
+        ForeignKey("skills.skill_id", ondelete="SET NULL")
+    )
+    bank_question_id: Mapped[str | None] = mapped_column(String(60))
+    source_fact_ids: Mapped[list[str] | None] = mapped_column(JSON)
+    difficulty: Mapped[str | None] = mapped_column(String(20))
+    key_points: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)
+    explanation: Mapped[str | None] = mapped_column(Text)
+    suggested_answer: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    context: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    time_limit_seconds: Mapped[int | None] = mapped_column(Integer)
+    revealed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    answered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    evaluation: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+
     session: Mapped["InterviewSession"] = relationship(
         back_populates="questions"
     )
+    answers: Mapped[list["InterviewAnswer"]] = relationship(
+        back_populates="question",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="InterviewAnswer.attempt",
+    )
+
+
+class InterviewAnswer(Base):
+    """One answer attempt to an interview question (Phase 6)."""
+
+    __tablename__ = "interview_answers"
+
+    __table_args__ = (
+        UniqueConstraint("question_id", "attempt", name="uq_interview_answer_attempt"),
+        CheckConstraint("score >= 0 AND score <= 100", name="ck_interview_answers_score_range"),
+        CheckConstraint("feedback_source IN ('rubric', 'llm')", name="ck_interview_answers_feedback_source"),
+    )
+
+    answer_id: Mapped[int] = mapped_column(primary_key=True)
+    question_id: Mapped[int] = mapped_column(
+        ForeignKey("interview_questions.question_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    attempt: Mapped[int] = mapped_column(Integer, nullable=False)
+    answer_text: Mapped[str] = mapped_column(Text, nullable=False)
+    time_taken_seconds: Mapped[int | None] = mapped_column(Integer)
+    score: Mapped[float] = mapped_column(Float, nullable=False)
+    evaluation: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    feedback: Mapped[str] = mapped_column(Text, nullable=False)
+    feedback_source: Mapped[str] = mapped_column(String(20), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    question: Mapped["InterviewQuestion"] = relationship(back_populates="answers")
 
 
 # ============================================================
