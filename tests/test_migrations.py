@@ -23,6 +23,7 @@ PHASE_1 = "a1c4e2b7d9f0"
 PHASE_2 = "b7e3d1f4a2c8"
 PHASE_3 = "c4f8a9e2b6d1"
 PHASE_4 = "d5a1c7e3f9b2"
+PHASE_5 = "e7b2d4f6a8c1"
 
 
 @pytest.fixture
@@ -50,7 +51,8 @@ def assert_no_drift(config):
 
 def test_single_linear_head(alembic_config):
     script = ScriptDirectory.from_config(alembic_config)
-    assert script.get_heads() == [PHASE_4]
+    assert script.get_heads() == [PHASE_5]
+    assert script.get_revision(PHASE_5).down_revision == PHASE_4
     assert script.get_revision(PHASE_4).down_revision == PHASE_3
     assert script.get_revision(PHASE_3).down_revision == PHASE_2
     assert script.get_revision(PHASE_2).down_revision == PHASE_1
@@ -107,7 +109,19 @@ def test_migrations_round_trip_without_drift(alembic_config):
     # Phase 4 downgrade and upgrade again.
     command.downgrade(alembic_config, PHASE_3)
     assert "priority_score" not in columns("skill_gap_recommendations")
-    command.upgrade(alembic_config, "head")
+    command.upgrade(alembic_config, PHASE_4)
     assert "priority_score" in columns("skill_gap_recommendations")
+    assert "content_json" not in columns("generated_documents")
+
+    # Phase 5: upgrade, downgrade, upgrade again.
+    command.upgrade(alembic_config, PHASE_5)
+    assert {"content_json", "generation_method", "llm_provider", "llm_model", "fact_check",
+            "ats_report", "options", "current_version", "updated_at"} <= columns("generated_documents")
+    assert "generated_document_versions" in inspect(database.engine).get_table_names()
+    command.downgrade(alembic_config, PHASE_4)
+    assert "content_json" not in columns("generated_documents")
+    assert "generated_document_versions" not in inspect(database.engine).get_table_names()
+    command.upgrade(alembic_config, "head")
+    assert "generated_document_versions" in inspect(database.engine).get_table_names()
 
     assert_no_drift(alembic_config)

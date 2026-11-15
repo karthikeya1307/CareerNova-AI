@@ -734,6 +734,90 @@ Curated plans live in `backend/data/learning_plans.json` (version `2026.11-v1`) 
 
 Plans contain no external links or named courses. A skill without a curated plan gets a generic outline marked `curated: false`.
 
+## 6D. Resume and Cover Letter Customization APIs
+
+All endpoints require login; documents, resumes and versions of other users return `404`. Inactive or past-deadline internships return `404`.
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/documents/llm-status` | Whether AI-assisted writing is configured, plus the privacy disclosure to show |
+| GET | `/documents/resumes/{resume_id}/internships/{internship_id}/ats-report` | ATS keyword and format report (read-only) |
+| POST | `/documents/resume` | Create an internship-specific resume (`201`) |
+| POST | `/documents/cover-letter` | Create a cover letter (`201`) |
+| GET | `/documents` | List your documents (`type`, `resume_id`, `internship_id`) |
+| GET | `/documents/{id}` | Current content, fact-check results, ATS report |
+| PATCH | `/documents/{id}` | Save edited content as a new version |
+| GET | `/documents/{id}/versions` | Version history |
+| POST | `/documents/{id}/versions/{version}/restore` | Restore a version (creates a new version) |
+| GET | `/documents/{id}/download?format=docx\|txt` | Download (rendered on request, not stored) |
+| DELETE | `/documents/{id}` | Permanently delete a document and its versions; the UI must ask for confirmation |
+
+### 6D.1 Factual consistency
+
+Documents are built only from a **fact base** with stable ids:
+- `sum-1`: the summary
+- `prof-1`: the profile degree
+- `edu-N`, `exp-N`, `int-N`, `proj-N`: education, experience, internship and project entries
+- `cert-N`, `ach-N`, `lang-N`: certifications, achievements and languages
+
+The facts come from the resume's latest successful extraction and the profile. Contact details (name, e-mail, phone, links, location) are kept separately: they appear only in the document header, which is filled in locally.
+
+The fact checker flags:
+- technical skills the candidate does not have, unless the cited fact itself names the skill
+- numbers that are not in the cited facts
+- capitalised names or terms that are not in the cited facts, the internship record or the skills
+- unknown fact ids
+
+### 6D.2 Create a resume
+
+```json
+{
+  "resume_id": 3,
+  "internship_id": 12,
+  "use_llm": false,
+  "llm_consent": false,
+  "options": { "max_skills": 15, "max_projects": 3, "max_experience": 4, "max_bullets": 4 }
+}
+```
+
+Deterministic generation (the default) orders matched required skills first, then matched preferred skills, then the rest. It ranks experience and projects by how many of the internship's skills they mention, trims the summary to two sentences and tidies line formatting. **Nothing is added.**
+
+The response includes an `ats_report`:
+- required and preferred keyword coverage, with where each keyword was found
+- missing keywords, each with "add only if true" guidance; they are **never inserted**
+- format and contact checks
+
+### 6D.3 Create a cover letter
+
+```json
+{ "resume_id": 3, "internship_id": 12, "tone": "formal", "emphasize_skills": ["FastAPI"], "use_llm": false, "llm_consent": false }
+```
+
+The letter has these paragraphs: greeting, opening (role and company from the internship record), fit (matched skills plus 1–2 cited experiences or projects), an optional learning paragraph, motivation (formal tone only) and closing.
+
+The letter never claims a missing skill. The learning paragraph ("I am currently learning …") appears only for internship skills the student has marked `in_progress` in their Phase 4 skill-gap plan. `emphasize_skills` must be skills on the resume; otherwise the request returns `422`.
+
+### 6D.4 AI-assisted writing (optional, off by default)
+
+- Available only when the server sets `LLM_PROVIDER=groq` and `GROQ_API_KEY`. Otherwise `GET /documents/llm-status` returns `available: false`, and `use_llm: true` returns `503`.
+- Each request must set `use_llm: true` **and** `llm_consent: true`, after the client has shown the `disclosure` text. Without consent the request returns `422`.
+- Only the content facts needed for the document and the internship details are sent. **Name, e-mail, phone, links and location are never sent.** Every payload is checked before sending; if contact details are detected, nothing is sent and deterministic content is used.
+- Every generated statement must cite fact ids and pass the fact checker. Unsupported statements are replaced by deterministic content and listed in `fact_check.rejected_statements`.
+- If the provider fails or times out, deterministic content is used and an `llm_unavailable` warning is recorded.
+- API keys and resume content are never logged.
+
+### 6D.5 Editing and versions
+
+`PATCH /documents/{id}` accepts `{ "title"?: str, "content": <structured content> }`. The content type must match the document (`resume` or `cover_letter`). Limits: 12 sections or paragraphs, 50 items per section, 20 lines per item, 500 characters per line.
+
+Edits are saved as written. The same fact checks run and are returned as `fact_check.warnings`; for example, an edit mentioning a skill that is not on the resume is flagged. If the source resume has been deleted, a `source_unavailable` warning is returned instead.
+
+### 6D.6 Downloads
+
+- `format=docx`: an ATS-friendly single-column DOCX with standard headings and plain bullets, and no tables, images or text boxes. The project's own resume parser reads it back with the same skills, education and contact e-mail.
+- `format=txt`: plain text.
+- PDF is not supported in this phase.
+
 ## 7. Administration APIs
 
 All endpoints require an access token for a user with the `admin` role.

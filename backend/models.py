@@ -773,7 +773,29 @@ class SkillGapRecommendation(Base):
 # ============================================================
 
 class GeneratedDocument(Base):
+    """A customized resume or cover letter (Phase 5).
+
+    ``content`` holds the rendered plain text of the current version and
+    ``content_json`` its structured sections. Every save creates a row in
+    ``generated_document_versions``.
+    """
+
     __tablename__ = "generated_documents"
+
+    __table_args__ = (
+        CheckConstraint(
+            "document_type IN ('resume', 'cover_letter')",
+            name="ck_generated_documents_type",
+        ),
+        CheckConstraint(
+            "generation_method IN ('deterministic', 'llm')",
+            name="ck_generated_documents_method",
+        ),
+        CheckConstraint(
+            "current_version >= 1",
+            name="ck_generated_documents_version_positive",
+        ),
+    )
 
     document_id: Mapped[int] = mapped_column(primary_key=True)
 
@@ -804,6 +826,24 @@ class GeneratedDocument(Base):
         nullable=False,
     )
 
+    # Added in Phase 5 (additive migration).
+    content_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    generation_method: Mapped[str | None] = mapped_column(String(20))
+    llm_provider: Mapped[str | None] = mapped_column(String(50))
+    llm_model: Mapped[str | None] = mapped_column(String(100))
+    fact_check: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    ats_report: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    options: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    current_version: Mapped[int] = mapped_column(
+        Integer, default=1, server_default=text("1"), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
     user: Mapped["User"] = relationship(
         back_populates="generated_documents"
     )
@@ -812,6 +852,51 @@ class GeneratedDocument(Base):
     )
     internship: Mapped["Internship | None"] = relationship(
         back_populates="generated_documents"
+    )
+    versions: Mapped[list["GeneratedDocumentVersion"]] = relationship(
+        back_populates="document",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="GeneratedDocumentVersion.version",
+    )
+
+
+class GeneratedDocumentVersion(Base):
+    """Immutable snapshot of a generated document (Phase 5)."""
+
+    __tablename__ = "generated_document_versions"
+
+    __table_args__ = (
+        UniqueConstraint(
+            "document_id",
+            "version",
+            name="uq_generated_document_version",
+        ),
+        CheckConstraint(
+            "source IN ('generated', 'edited', 'restored')",
+            name="ck_generated_document_versions_source",
+        ),
+    )
+
+    version_id: Mapped[int] = mapped_column(primary_key=True)
+    document_id: Mapped[int] = mapped_column(
+        ForeignKey("generated_documents.document_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    content_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    source: Mapped[str] = mapped_column(String(20), nullable=False)
+    fact_check: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    document: Mapped["GeneratedDocument"] = relationship(
+        back_populates="versions"
     )
 
 

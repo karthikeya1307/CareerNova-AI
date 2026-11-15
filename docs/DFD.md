@@ -143,6 +143,12 @@ flowchart TD
   using importance and the read-only Phase 3 scores, and attaches
   curated, link-free learning plans. Progress is tracked per skill and
   re-parsed resumes complete recommendations automatically.
+- Document Generation (P6, Phase 5) builds a fact base with stable ids
+  from the student's own resume and profile, produces internship-specific
+  resumes and cover letters deterministically, and optionally asks the
+  LLM service to rephrase (opt-in per document; contact details never
+  sent). Every statement is fact-checked; documents are versioned in D1
+  and rendered to DOCX/TXT on download (nothing stored in D2).
 - Vector search results are always filtered through PostgreSQL, so
   inactive or deleted internships are never returned, even from an
   outdated index.

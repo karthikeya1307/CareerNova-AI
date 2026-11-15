@@ -312,15 +312,41 @@ Backend: FastAPI (proposed architecture)
 
 \- internship\_id: Integer, Foreign Key -> internships.internship\_id, nullable
 
-\- document\_type: VARCHAR(50), NOT NULL
+\- document\_type: VARCHAR(50), NOT NULL, CHECK IN ('resume', 'cover\_letter')
 
 \- title: VARCHAR(255), nullable
 
-\- content: TEXT, NOT NULL
+\- content: TEXT, NOT NULL (rendered text of the current version)
 
-\- file\_path: VARCHAR(500), nullable
+\- file\_path: VARCHAR(500), nullable (unused; downloads are rendered on request)
 
 \- created\_at: TIMESTAMP WITH TIME ZONE
+
+\- Added in migration e7b2d4f6a8c1 (Phase 5, additive):
+
+  \- content\_json: JSON (structured sections/paragraphs with cited fact ids)
+
+  \- generation\_method: VARCHAR(20), CHECK IN ('deterministic', 'llm'); llm\_provider, llm\_model
+
+  \- fact\_check: JSON (checked statements, rejected statements, warnings); ats\_report: JSON; options: JSON
+
+  \- current\_version: Integer NOT NULL default 1 (CHECK >= 1); updated\_at: TIMESTAMP NOT NULL default now()
+
+\- Resume deletion sets resume\_id to NULL (the student's document is kept); user deletion deletes documents.
+
+\### 12a. generated\_document\_versions (Phase 5)
+
+\- version\_id: Integer, Primary Key
+
+\- document\_id: Integer, Foreign Key -> generated\_documents.document\_id (ON DELETE CASCADE), indexed
+
+\- version: Integer; UNIQUE (document\_id, version)
+
+\- content: TEXT, NOT NULL; content\_json: JSON, NOT NULL
+
+\- source: VARCHAR(20), CHECK IN ('generated', 'edited', 'restored')
+
+\- fact\_check: JSON, nullable; created\_at: TIMESTAMP WITH TIME ZONE
 
 
 

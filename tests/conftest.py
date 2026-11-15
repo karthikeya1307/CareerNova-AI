@@ -208,6 +208,53 @@ def isolated_index(monkeypatch, tmp_path):
     vector_index.clear_cache()
 
 
+@pytest.fixture(autouse=True)
+def llm_disabled_and_offline(monkeypatch):
+    """No test may reach a real LLM: provider forced off, network blocked."""
+    from backend.services import llm
+    from backend.services.llm import groq_provider
+
+    def blocked(*args, **kwargs):
+        raise AssertionError("Real network call attempted in tests")
+
+    monkeypatch.setattr(groq_provider.urllib.request, "urlopen", blocked)
+    llm.set_llm_provider(None, override=True)
+    yield
+    llm.set_llm_provider(None, override=True)
+
+
+class FakeLLM:
+    """Mock LLM provider that records requests and returns a fixed reply."""
+
+    name = "fake"
+    model = "fake-model"
+
+    def __init__(self, reply=None, error=None):
+        self.reply = reply if reply is not None else {}
+        self.error = error
+        self.calls = []
+
+    def complete_json(self, system, user):
+        import json
+
+        self.calls.append({"system": system, "payload": json.loads(user)})
+        if self.error:
+            raise self.error
+        return self.reply
+
+
+@pytest.fixture
+def fake_llm():
+    from backend.services import llm
+
+    def install(reply=None, error=None):
+        provider = FakeLLM(reply, error)
+        llm.set_llm_provider(provider, override=True)
+        return provider
+
+    return install
+
+
 @pytest.fixture
 def test_embedder():
     from backend.services import embeddings

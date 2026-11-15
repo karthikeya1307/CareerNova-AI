@@ -45,12 +45,14 @@ AI_CAREER_COMPANION/
 │   ├── routes/
 │   │   ├── admin.py
 │   │   ├── auth.py
+│   │   ├── documents.py
 │   │   ├── internships.py
 │   │   ├── matches.py
 │   │   ├── profiles.py
 │   │   ├── skill_gaps.py
 │   │   └── resumes.py
 │   ├── schemas/
+│   │   ├── document_schema.py
 │   │   ├── internship_schema.py
 │   │   ├── match_schema.py
 │   │   ├── skill_gap_schema.py
@@ -58,14 +60,23 @@ AI_CAREER_COMPANION/
 │   │   ├── profile_schema.py
 │   │   └── resume_schema.py
 │   ├── services/
+│   │   ├── ats.py
 │   │   ├── candidate_profile.py
 │   │   ├── compatibility.py
+│   │   ├── cover_letter.py
+│   │   ├── document_common.py
+│   │   ├── document_renderer.py
+│   │   ├── documents_service.py
 │   │   ├── email_service.py
 │   │   ├── embeddings.py
+│   │   ├── fact_base.py
+│   │   ├── fact_check.py
+│   │   ├── llm/                  (base.py, groq_provider.py)
 │   │   ├── internship_seed.py
 │   │   ├── internship_text.py
 │   │   ├── learning_plans.py
 │   │   ├── matching_agent.py
+│   │   ├── resume_customizer.py
 │   │   ├── resume_parser.py
 │   │   ├── resume_skills.py
 │   │   ├── skill_gap.py
@@ -113,7 +124,7 @@ AI_CAREER_COMPANION/
 | 3 | Module 4: Internship matching and compatibility scoring | ✅ Implemented and reviewed, 361/361 tests pass (incl. all 235 earlier tests). Pending on the development database: migration `c4f8a9e2b6d1` (after the Phase 1 and 2 migrations) |
 | A | RAG internship-matching assignment: validation, 10-profile evaluation, documentation (`docs/assignment/`) | ✅ Evaluated: 9/9 system checks, 50/50 results grounded, 373/373 tests pass |
 | 4 | Module 5: Skill gap analysis and recommendation | ✅ Implemented, 417/417 tests pass (incl. all 373 earlier tests). Pending on the development database: migration `d5a1c7e3f9b2` (after the Phase 1–3 migrations) |
-| 5 | Module 6: Resume and cover letter customization (includes the provider-independent LLM service, Groq first) | Planned |
+| 5 | Module 6: Resume and cover letter customization (includes the provider-independent LLM service, Groq first) | ✅ Implemented, 489/489 tests pass (incl. all 417 earlier tests); LLM writing off by default. Pending on the development database: migration `e7b2d4f6a8c1` (after the Phase 1–4 migrations) |
 | 6 | Module 7: Interview preparation | Planned |
 | 7 | Module 8: Application tracking | Planned |
 | 8 | Module 9: Conversational career assistant | Planned |
@@ -225,6 +236,20 @@ Scores are 0–100: skills 50%, semantic similarity 20%, education 15%, location
 | PATCH | `/skill-gaps/{recommendation_id}` | Progress: `pending`, `in_progress`, `completed`, `dismissed` |
 
 Skills that appear on a re-parsed resume complete their recommendations automatically. Learning plans are curated in `backend/data/learning_plans.json` and contain no external links. See `docs/API_DOCUMENTATION.md` section 6C.
+
+### Resume and Cover Letter APIs (login required, own data only)
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/documents/llm-status` | AI-writing availability and privacy disclosure |
+| GET | `/documents/resumes/{resume_id}/internships/{internship_id}/ats-report` | ATS keyword coverage and checks |
+| POST | `/documents/resume` | Internship-specific resume |
+| POST | `/documents/cover-letter` | Cover letter |
+| GET / PATCH / DELETE | `/documents/{id}` | View, edit (new version), delete |
+| GET | `/documents/{id}/versions` | Version history; `POST .../versions/{v}/restore` restores |
+| GET | `/documents/{id}/download?format=docx\|txt` | Download |
+
+Generation is deterministic by default and uses only facts from the student's own resume and profile. Optional Groq-based writing is off unless configured and must be opted into per document. Name and contact details are never sent, and every generated statement is fact-checked. See `docs/API_DOCUMENTATION.md` section 6D.
 
 ### Profile APIs
 
@@ -392,6 +417,8 @@ Additional project documentation is available in the `docs/` directory:
 - Role-based authorization (`student`, `admin`) protects administrative endpoints.
 - CORS only admits the origins listed in `CORS_ORIGINS`.
 - Verification-link resends are throttled and do not reveal whether an account exists.
+- Generated resumes and cover letters contain only facts from the student's own resume and profile; every AI-generated statement is fact-checked and unsupported ones are replaced.
+- Optional AI writing never receives name, e-mail, phone, links or location, requires explicit per-document consent, and never logs API keys or resume content.
 - Semantic search results are always re-checked against PostgreSQL; inactive or deleted internships are never returned.
 - Index rebuilds run one at a time and are swapped in atomically; index files are verified by SHA-256 before loading.
 - No pickle files are downloaded or loaded (model weights are safetensors; the index is native FAISS format).
