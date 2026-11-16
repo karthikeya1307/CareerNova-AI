@@ -27,6 +27,7 @@ PHASE_4 = "d5a1c7e3f9b2"
 PHASE_5 = "e7b2d4f6a8c1"
 PHASE_6 = "f3c9e1a5b7d2"
 PHASE_7 = "a9d3f6b2c8e4"
+PHASE_8 = "b2e8c4a7d1f5"
 
 
 @pytest.fixture
@@ -54,7 +55,8 @@ def assert_no_drift(config):
 
 def test_single_linear_head(alembic_config):
     script = ScriptDirectory.from_config(alembic_config)
-    assert script.get_heads() == [PHASE_7]
+    assert script.get_heads() == [PHASE_8]
+    assert script.get_revision(PHASE_8).down_revision == PHASE_7
     assert script.get_revision(PHASE_7).down_revision == PHASE_6
     assert script.get_revision(PHASE_6).down_revision == PHASE_5
     assert script.get_revision(PHASE_5).down_revision == PHASE_4
@@ -151,8 +153,21 @@ def test_migrations_round_trip_without_drift(alembic_config):
     command.downgrade(alembic_config, PHASE_6)
     assert "source" not in columns("applications")
     assert "saved_internships" not in inspect(database.engine).get_table_names()
-    command.upgrade(alembic_config, "head")
+    command.upgrade(alembic_config, PHASE_7)
     assert "application_activity" in inspect(database.engine).get_table_names()
+    assert "intent" not in columns("messages")
+
+    # Phase 8: upgrade, downgrade, upgrade again.
+    command.upgrade(alembic_config, PHASE_8)
+    assert {"resume_id", "context", "message_count", "last_message_at"} <= columns("conversations")
+    assert {"resume_id", "intent", "entities", "result_set", "suggested_actions", "generation_method",
+            "fact_check", "warnings"} <= columns("messages")
+    assert "assistant_rate_limits" in inspect(database.engine).get_table_names()
+    command.downgrade(alembic_config, PHASE_7)
+    assert "intent" not in columns("messages") and "context" not in columns("conversations")
+    assert "assistant_rate_limits" not in inspect(database.engine).get_table_names()
+    command.upgrade(alembic_config, "head")
+    assert "result_set" in columns("messages")
 
     assert_no_drift(alembic_config)
 
@@ -192,6 +207,7 @@ def test_phase7_migrates_legacy_lowercase_statuses(alembic_config):
     assert [(r.source, r.company_name, r.title, r.work_mode) for r in rows][0] == (
         "internal", "Nimbus", "Backend Intern", "Remote")
     assert history == [("APPLIED", "migrated"), ("INTERVIEW_SCHEDULED", "migrated"), ("SAVED", "migrated")]
+    command.upgrade(alembic_config, "head")              # the drift check needs the latest revision
     assert_no_drift(alembic_config)
     # Legacy rows only: the downgrade is allowed and restores lowercase statuses.
     command.downgrade(alembic_config, PHASE_6)
@@ -264,4 +280,46 @@ def test_phase7_downgrade_protects_data_and_override_is_scoped(alembic_config):
         assert conn.execute(text("SELECT count(*) FROM internships")).scalar() == 3
         assert conn.execute(text("SELECT count(*) FROM resumes")).scalar() == 1
     command.upgrade(alembic_config, "head")
+    assert_no_drift(alembic_config)
+
+
+def test_phase8_downgrade_protects_data_and_keeps_message_text(alembic_config):
+    Base.metadata.drop_all(bind=database.engine)
+    Base.metadata.create_all(bind=database.engine)
+    command.stamp(alembic_config, "head")
+    with database.engine.begin() as conn:
+        conn.execute(text("INSERT INTO users (first_name, last_name, email, password_hash, is_verified) "
+                          "VALUES ('T', 'U', 'p8-migration@example.com', 'x', true)"))
+        user_id = conn.execute(text("SELECT user_id FROM users")).scalar()
+        conn.execute(text("INSERT INTO conversations (user_id, title, message_count) VALUES (:u, 'Chat', 2)"),
+                     {"u": user_id})
+        conversation_id = conn.execute(text("SELECT conversation_id FROM conversations")).scalar()
+        conn.execute(text("INSERT INTO messages (conversation_id, sender, content, intent, generation_method) "
+                          "VALUES (:c, 'user', 'show my applications', 'application_status', NULL), "
+                          "(:c, 'assistant', 'You have 1 application.', 'application_status', 'deterministic')"),
+                     {"c": conversation_id})
+        conn.execute(text("INSERT INTO assistant_rate_limits (user_id, bucket, window_start, count) "
+                          "VALUES (:u, 'minute', now(), 1)"), {"u": user_id})
+
+    with pytest.raises(RuntimeError, match="Refusing to downgrade Phase 8"):
+        command.downgrade(alembic_config, PHASE_7)
+    with database.engine.connect() as conn:
+        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == PHASE_8
+        assert conn.execute(text("SELECT count(*) FROM messages WHERE intent IS NOT NULL")).scalar() == 2
+
+    alembic_config.cmd_opts = argparse.Namespace(x=["phase8_allow_data_loss=true"])
+    try:
+        command.downgrade(alembic_config, PHASE_7)
+    finally:
+        alembic_config.cmd_opts = None
+    with database.engine.connect() as conn:
+        # Only the Phase 8 columns and the rate-limit table were dropped; text, titles and users remain.
+        assert conn.execute(text("SELECT content FROM messages ORDER BY message_id")).scalars().all() == [
+            "show my applications", "You have 1 application."]
+        assert conn.execute(text("SELECT title FROM conversations")).scalar() == "Chat"
+        assert conn.execute(text("SELECT count(*) FROM users")).scalar() == 1
+    assert "assistant_rate_limits" not in inspect(database.engine).get_table_names()
+    command.upgrade(alembic_config, "head")
+    with database.engine.connect() as conn:
+        assert conn.execute(text("SELECT message_count FROM conversations")).scalar() == 2
     assert_no_drift(alembic_config)

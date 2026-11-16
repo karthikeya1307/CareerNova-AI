@@ -1374,7 +1374,19 @@ class ApplicationActivity(Base):
 # ============================================================
 
 class Conversation(Base):
+    """A chat with the career assistant (Phase 8 extends the original table).
+
+    ``context`` holds only POINTERS (message ids) to earlier result sets and
+    the current focus - never resume facts or personal data. The result sets
+    themselves live on the assistant messages, so deleting a message (for
+    example when the resume it used is deleted) also removes what a
+    follow-up could resolve against.
+    """
+
     __tablename__ = "conversations"
+    __table_args__ = (
+        Index("ix_conversations_user_updated", "user_id", "updated_at"),
+    )
 
     conversation_id: Mapped[int] = mapped_column(
         primary_key=True
@@ -1387,6 +1399,13 @@ class Conversation(Base):
     )
 
     title: Mapped[str | None] = mapped_column(String(255))
+
+    # Phase 8 fields.
+    resume_id: Mapped[int | None] = mapped_column(
+        ForeignKey("resumes.resume_id", ondelete="SET NULL"), index=True)
+    context: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    message_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0", default=0)
+    last_message_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -1408,11 +1427,18 @@ class Conversation(Base):
         back_populates="conversation",
         cascade="all, delete-orphan",
         passive_deletes=True,
-        order_by="Message.created_at",
+        order_by="Message.message_id",
     )
 
 
 class Message(Base):
+    """One chat message (Phase 8 extends the original table).
+
+    ``resume_id`` is set on BOTH messages of a turn whose answer used resume
+    data; ON DELETE CASCADE removes that turn when the resume is deleted, so
+    no deleted resume facts survive in the chat history.
+    """
+
     __tablename__ = "messages"
 
     __table_args__ = (
@@ -1420,6 +1446,9 @@ class Message(Base):
             "sender IN ('user', 'assistant', 'system')",
             name="ck_message_sender",
         ),
+        CheckConstraint("generation_method IN ('deterministic', 'llm')",
+                        name="ck_messages_generation_method"),
+        Index("ix_messages_conversation_message", "conversation_id", "message_id"),
     )
 
     message_id: Mapped[int] = mapped_column(primary_key=True)
@@ -1437,10 +1466,23 @@ class Message(Base):
         Text, nullable=False
     )
 
-    # Optional citations or source metadata returned by the AI
+    # Structured, traceable sources: [{"type", "id", "label"}, ...]
     sources: Mapped[list[dict[str, Any]] | None] = mapped_column(
         JSON
     )
+
+    # Phase 8 fields.
+    resume_id: Mapped[int | None] = mapped_column(
+        ForeignKey("resumes.resume_id", ondelete="CASCADE"), index=True)
+    intent: Mapped[str | None] = mapped_column(String(40))
+    entities: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    result_set: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    suggested_actions: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)
+    generation_method: Mapped[str | None] = mapped_column(String(20))
+    llm_provider: Mapped[str | None] = mapped_column(String(50))
+    llm_model: Mapped[str | None] = mapped_column(String(100))
+    fact_check: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    warnings: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -1451,6 +1493,32 @@ class Message(Base):
     conversation: Mapped["Conversation"] = relationship(
         back_populates="messages"
     )
+
+
+ASSISTANT_RATE_BUCKETS = ("minute", "day", "llm_hour")
+
+
+class AssistantRateLimit(Base):
+    """Per-user request counters for the assistant (Phase 8).
+
+    One row per (user, bucket, window). Incremented with a single atomic
+    INSERT ... ON CONFLICT DO UPDATE ... RETURNING, so concurrent requests can
+    never both slip under the limit.
+    """
+
+    __tablename__ = "assistant_rate_limits"
+    __table_args__ = (
+        CheckConstraint("bucket IN ('minute', 'day', 'llm_hour')", name="ck_assistant_rate_limits_bucket"),
+        CheckConstraint("count >= 0", name="ck_assistant_rate_limits_count"),
+        Index("ix_assistant_rate_limits_window", "window_start"),
+    )
+
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.user_id", ondelete="CASCADE"), primary_key=True)
+    bucket: Mapped[str] = mapped_column(String(20), primary_key=True)
+    window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+
 
 # ============================================================
 # AUTHENTICATION MODULE

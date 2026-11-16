@@ -164,6 +164,14 @@ flowchart TD
   non-sensitive activity feed in D1, all scoped to the logged-in student;
   it reads Phase 2/3/5/6 data without changing it and sends nothing to
   the LLM service.
+- The Career Assistant (P9, Phase 8) understands questions with rules
+  (plus an optional local MiniLM stage), gathers facts with traceable
+  sources from P2-P8 data for the logged-in student only (D1, D3), and
+  answers deterministically; it never writes P2-P8 data. The LLM service
+  is optional and consented per message: it receives only the
+  question topic and AI-safe facts, never the question text, chat history,
+  contact details or other free text the student typed,
+  and its answer is verified claim by claim before use.
 - Vector search results are always filtered through PostgreSQL, so
   inactive or deleted internships are never returned, even from an
   outdated index.

@@ -559,6 +559,28 @@ Backend: FastAPI (proposed architecture)
 
 \- Constraint: sender is user, assistant, or system
 
+\- Extended in migration b2e8c4a7d1f5 (Phase 8):
+
+  \- conversations.resume\_id: Foreign Key -> resumes.resume\_id ON DELETE SET NULL, indexed
+
+  \- conversations.context: JSON - pointers only (last\_result\_message\_id, focus {type, id, message\_id}); never resume facts
+
+  \- conversations.message\_count (NOT NULL, default 0), last\_message\_at; INDEX (user\_id, updated\_at)
+
+  \- messages.resume\_id: Foreign Key -> resumes.resume\_id ON DELETE CASCADE - set on both messages of a turn that used resume data, so deleting the resume deletes that turn
+
+  \- messages.intent, entities (JSON), result\_set (JSON: ordered items shown, for follow-ups), suggested\_actions (JSON), generation\_method (CHECK IN ('deterministic', 'llm')), llm\_provider, llm\_model, fact\_check (JSON), warnings (JSON); INDEX (conversation\_id, message\_id)
+
+  \- messages.sources: JSON list of {type, id, label}
+
+\### 17a. assistant\_rate\_limits (Phase 8)
+
+\- user\_id: Foreign Key -> users.user\_id ON DELETE CASCADE
+
+\- bucket: CHECK IN ('minute', 'day', 'llm\_hour'); window\_start: TIMESTAMP WITH TIME ZONE; count: Integer >= 0
+
+\- PRIMARY KEY (user\_id, bucket, window\_start); INDEX (window\_start); incremented atomically with INSERT ... ON CONFLICT DO UPDATE; rows older than two days are removed
+
 
 
 \## 3. Key Relationships

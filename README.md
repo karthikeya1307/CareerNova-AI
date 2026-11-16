@@ -48,6 +48,7 @@ AI_CAREER_COMPANION/
 │   ├── routes/
 │   │   ├── admin.py
 │   │   ├── applications.py
+│   │   ├── assistant.py
 │   │   ├── auth.py
 │   │   ├── documents.py
 │   │   ├── internships.py
@@ -58,6 +59,7 @@ AI_CAREER_COMPANION/
 │   │   └── resumes.py
 │   ├── schemas/
 │   │   ├── application_schema.py
+│   │   ├── assistant_schema.py
 │   │   ├── document_schema.py
 │   │   ├── internship_schema.py
 │   │   ├── interview_schema.py
@@ -77,6 +79,7 @@ AI_CAREER_COMPANION/
 │   │   ├── documents_service.py
 │   │   ├── application_dashboard.py
 │   │   ├── application_service.py
+│   │   ├── assistant/            (intents, resolver, tools, verify, llm_rewrite, rate_limit, service)
 │   │   ├── email_service.py
 │   │   ├── embeddings.py
 │   │   ├── fact_base.py
@@ -141,7 +144,7 @@ AI_CAREER_COMPANION/
 | 5 | Module 6: Resume and cover letter customization (includes the provider-independent LLM service, Groq first) | ✅ Implemented, 489/489 tests pass (incl. all 417 earlier tests); LLM writing off by default. Pending on the development database: migration `e7b2d4f6a8c1` (after the Phase 1–4 migrations) |
 | 6 | Module 7: Interview preparation | ✅ Implemented — see the Phase 6 report. Pending on the development database: migration `f3c9e1a5b7d2` (after the Phase 1–5 migrations) |
 | 7 | Module 8: Application tracking | ✅ Implemented — see the Phase 7 report. Pending on the development database: migration `a9d3f6b2c8e4` (after the Phase 1–6 migrations) |
-| 8 | Module 9: Conversational career assistant | Planned |
+| 8 | Module 9: Conversational career assistant | ✅ Implemented — see the Phase 8 report. Pending on the development database: migration `b2e8c4a7d1f5` (after the Phase 1–7 migrations) |
 | 9 | React + Vite frontend, full integration, final documentation | Planned |
 
 Frontend requirement recorded for Phase 9: resume deletion is permanent, so the UI must ask for explicit confirmation before calling `DELETE /resumes/{resume_id}`.
@@ -303,6 +306,19 @@ Questions come from a curated bank: 207 technical questions covering all 69 data
 | PATCH / DELETE | `/applications/reminders/{reminder_id}` | Edit, complete or delete a reminder |
 
 Applications move through `SAVED -> APPLIED -> SHORTLISTED / INTERVIEW_SCHEDULED -> SELECTED / REJECTED`, with `WITHDRAWN` available along the way; every real change is recorded. Adding an interview round moves `APPLIED`/`SHORTLISTED` to `INTERVIEW_SCHEDULED`, and cancelling or deleting every round moves it back. Reminders are **stored only**: no e-mail or SMS is sent. All Phase 7 timestamps must include a timezone offset (for example `+05:30` for IST) and are returned in UTC (`...Z`). See `docs/API_DOCUMENTATION.md` section 6F.
+
+### Career Assistant APIs (login required, own data only)
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/assistant/capabilities` | What the assistant can answer, AI status and privacy disclosure, limits |
+| POST / GET | `/assistant/conversations` | Start a conversation (optionally pinned to a resume) / list |
+| GET / PATCH | `/assistant/conversations/{id}` | Conversation with recent messages / rename or switch resume |
+| DELETE | `/assistant/conversations/{id}?confirm=true` | Delete permanently with all messages |
+| POST | `/assistant/conversations/{id}/messages` | Ask a question; returns the answer with sources and suggested actions |
+| GET | `/assistant/conversations/{id}/messages` | Message history (paged) |
+
+The assistant answers from the student's own data and the internship knowledge base: resume facts, internship search (FAISS with a keyword fallback), stored match explanations, skill gaps and learning plans, document checks, interview practice and application tracking. Answers are deterministic by default; every factual line carries a typed source (`resume`, `internship`, `match_result`, `skill_gap_recommendation`, `application`, ...). Follow-ups such as "tell me about the second one" resolve against the exact list shown earlier. The assistant never changes data; it suggests actions for the frontend to confirm. Optional AI rewording is off by default, needs consent per message, receives only the question topic and AI-safe facts (never the question text, chat history, contact details or other free text the student typed), and is verified claim by claim against the facts (otherwise the deterministic answer is used). Requests are rate-limited per student. See `docs/API_DOCUMENTATION.md` section 6G.
 
 ### Profile APIs
 

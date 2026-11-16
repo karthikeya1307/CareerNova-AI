@@ -1088,6 +1088,82 @@ Rates are rounded to one decimal place and `null` when the denominator is 0; the
 5. `POST /applications/41/reminders` to follow up; `PATCH /applications/reminders/9` `{ "is_completed": true }` when done.
 6. Offer: `PATCH /applications/41/status` `{ "status": "SELECTED" }`; the dashboard updates.
 
+## 6G. Career Assistant APIs (Phase 8)
+
+All endpoints require login; conversations belong to their creator and another student's id returns `404`. Request bodies reject unknown fields. Timestamps are UTC ISO 8601 ending in `Z`.
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/assistant/capabilities` | Example questions per intent, `llm` status with privacy disclosure, limits, notes |
+| POST | `/assistant/conversations` | `{resume_id?, title?}` -> `201`. `resume_id` must be the student's own (`404`) |
+| GET | `/assistant/conversations?skip=&limit=` | `{total, skip, limit, items}`, most recently updated first |
+| GET | `/assistant/conversations/{id}` | Conversation with its 50 most recent messages |
+| PATCH | `/assistant/conversations/{id}` | `{title?, resume_id?}` (switching resume clears the current focus) |
+| DELETE | `/assistant/conversations/{id}?confirm=true` | Permanent delete with all messages (`422` without `confirm=true`) |
+| GET | `/assistant/conversations/{id}/messages?before_id=&limit=` | History, oldest first, paged backwards |
+| POST | `/assistant/conversations/{id}/messages` | `{message, use_llm=false, llm_consent=false}` -> `201` `{conversation_id, user_message, assistant_message}` |
+
+### 6G.1 How a question is answered
+
+1. **Understand** (no AI): ordered rules detect the intent and entities (ordinals such as "the second one", pronouns, `internship #12`, `application #5`, skills, statuses, work mode, search words). An optional second stage compares the question with example phrases using the local MiniLM model (threshold 0.55, margin 0.05; off-topic questions are never classified); it never leaves the server.
+2. **Resolve** what the question refers to (6G.3).
+3. **Gather facts** with read-only tools that call existing Phase 1-7 services for the logged-in student only. Nothing is recalculated or written: match explanations come from stored match runs, recommendations from stored skill-gap rows, statuses from the application tables.
+4. **Answer** with a deterministic template made only of those facts, plus `suggested_actions` (`{label, method, endpoint, body, requires_confirmation}`) that the frontend may run after the student confirms. The assistant itself never changes data.
+5. **Optional AI rewording** (6G.5).
+
+| Intent | Example | Source types |
+|---|---|---|
+| `profile_summary` | "What skills are on my resume?" | `resume`, `resume_fact` |
+| `internship_search` | "Find remote data internships in Pune" | `internship` (FAISS; only active internships with an open deadline, exactly as in the keyword fallback, which is used with a `semantic_search_unavailable` warning only when the index or embedding model is unavailable) |
+| `internship_detail` | "Tell me more about the second one" | `internship`, `application`/`bookmark` |
+| `top_matches`, `match_explain` | "Show my top matches", "Why is the first one a good match?" | `match_result`, `internship` (stored runs only; top matches list only internships that are still open and say how many closed ones were hidden - `closed_matches_hidden`; an explanation of a closed internship starts by saying it is no longer open - `internship_closed`) |
+| `skill_gap` | "What skills am I missing for it?", "Show my skill gaps" | `internship`, `resume`, `skill_gap_recommendation`, `learning_plan` |
+| `learning_plan` | "How do I learn Docker?" | `learning_plan` |
+| `document_help` | "Cover letter for the first one" | `document`, `internship`, `resume` (ATS check) |
+| `interview_prep` | "Practice questions on SQL", "My interview progress" | `question_bank`, `interview_progress`, `interview_session` |
+| `application_status` | "Status of my Acme application", "Which were rejected?" | `application`, `application_interview`, `application_reminder` |
+| `upcoming_interviews`, `reminders`, `dashboard` | "When is my next interview?" | `application_interview`, `application_reminder`, `dashboard` |
+| `help`, `unknown` | "What can you do?" | none (not factual) |
+
+### 6G.2 Messages and sources
+
+```json
+{ "message_id": 42, "sender": "assistant", "intent": "internship_detail",
+  "content": "Details for Backend Intern at Nimbus Analytics:\n- Location: Pune; work mode: Hybrid.\n- ...",
+  "sources": [{ "type": "internship", "id": "12", "label": "Backend Intern at Nimbus Analytics", "available": true }],
+  "result_set": null,
+  "suggested_actions": [{ "label": "Save this internship", "method": "POST",
+                          "endpoint": "/applications/bookmarks/12", "body": {}, "requires_confirmation": true }],
+  "generation_method": "deterministic", "warnings": [], "created_at": "2026-11-15T10:00:00Z" }
+```
+
+Every factual line comes from a fact with at least one source `{type, id, label}`, so the frontend can open exactly the resume, internship, match result, recommendation, document, session, application, interview round or reminder behind it. When reading history, `available` is `false` for records deleted, closed or trashed since. Answers that are questions or guidance (help, clarifications) have no sources. Contact details, notes and reminder descriptions are never included in answers.
+
+### 6G.3 Follow-ups and context
+
+* A list answer stores its ordered `result_set` (`{kind, items: [{type, id, label}]}`) on the assistant message. "The second one" / "the last one" / "number 3" resolves against the **most recent list shown in this conversation**; a newer (possibly reordered) list replaces it, while non-list answers do not.
+* "It" / "that one" uses the current focus (the entity of the last detail answer), else the only item of the last list; with several candidates the assistant asks "Which one do you mean?" and lists them (that list becomes the new result set). Out-of-range ordinals are answered with the list again.
+* Explicit references (`internship #12`, `application #5`) and company names are checked against the database and the student's own records; another student's application is "not found".
+* The conversation `context` stores only pointers (`last_result_message_id`, `focus {type, id, message_id}`), never resume facts. If the message holding a list was deleted, the assistant says the earlier list is no longer available instead of guessing; deleted or closed records referenced by a follow-up are reported as unavailable.
+
+### 6G.4 Privacy, deletion and limits
+
+* Account deletion removes all conversations, messages and rate-limit counters.
+* Every message pair whose answer used resume data records that `resume_id`; deleting the resume deletes those turns (`ON DELETE CASCADE`), so no deleted resume facts remain in chat history, and the conversation's pinned resume becomes `null` (the latest parsed resume is used afterwards). Turns that did not use resume data are kept.
+* Rate limits per student: 10 messages per minute and 300 per day (`429` with `Retry-After`), plus 30 AI provider calls per hour. The AI limit is counted only when a provider call is actually made (not for answers without facts or requests refused by the privacy check); when it is reached the provider is not called and the standard answer is returned with an `ai_rate_limited` warning (with `retry_after`). Counters are incremented with one atomic `INSERT ... ON CONFLICT DO UPDATE ... RETURNING` in their own transaction, so concurrent requests can never exceed a limit; rejected message attempts count.
+* Size limits: messages 1-2,000 characters; 200 conversations per student; 500 messages per conversation (`409`).
+* Errors: if the semantic index or embedding model is unavailable, search falls back to keywords; database errors return `503` "The assistant could not answer right now" with nothing saved and no internal details; other unexpected errors are not hidden by a fallback.
+* Closed internships: anything that is deactivated or past its deadline is never presented as a current opportunity - search and top matches leave it out, and detail, explanation, skill-gap and document answers state "This internship is no longer open: ..." as a sourced fact. History sources show `available: false` for records deleted, closed or trashed since (including deleted bookmarks).
+
+### 6G.5 Optional AI rewording
+
+Off by default. Set `use_llm: true` **and** `llm_consent: true` (`422` without consent, `503` when not configured). Only answers with facts are reworded (otherwise `llm_not_applicable`).
+
+* Sent: only the detected **topic** (for example "internship search results") and the answer's facts in an AI-safe form. **Never sent:** the text of the question, the chat history, names, account and resume contact details, addresses, PIN codes, notes, contact persons, reminder titles or descriptions, document titles, or the company and job titles typed for external applications (these facts are sent as, for example, "a reminder for an external application, due ..."). The request still goes through the shared `call_llm` privacy pipeline (6D/6E). `GET /assistant/capabilities` returns this as `llm.assistant_disclosure`.
+* The AI must return `{"sentences": [{"text", "fact_ids"}]}`. Each sentence is verified against the facts it cites: numbers, skills and names must appear in those facts; a skill marked missing must not be described as present (and vice versa); status words must match; negated statuses and overclaiming ("guaranteed", "definitely", "best", ...) are treated as uncertain; `[removed]` placeholders are rejected.
+* If any sentence fails or is uncertain, the whole AI answer is discarded and the deterministic answer is returned with an `llm_unverified` warning (`llm_unavailable` if the provider failed). The `result_set` always comes from the deterministic answer, so follow-ups stay exact.
+* Accepted answers have `generation_method: "llm"` and only the sources of the cited facts.
+
 ## 7. Administration APIs
 
 All endpoints require an access token for a user with the `admin` role.
