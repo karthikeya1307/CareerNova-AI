@@ -19,6 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, selectinload
 
+from backend.services.job_sources import dedup_key
 from backend.models import Internship, InternshipSkill, KnowledgeDocument
 from backend.services.resume_skills import get_or_create_skills
 from backend.services.skill_normalizer import CATEGORY_OTHER, normalize_skill
@@ -250,7 +251,9 @@ def seed_internships(
         if current is None:
             result.created += 1
             if apply:
-                internship = Internship(external_id=record.id, is_active=True, **fields)
+                internship = Internship(external_id=record.id, is_active=True, **fields,
+                                        dedup_key=dedup_key(fields.get("title"), fields.get("company"),
+                                                            fields.get("location")))
                 db.add(internship)
                 db.flush()
                 set_internship_skills(db, internship, skills)
@@ -269,6 +272,7 @@ def seed_internships(
         if apply:
             for key, value in fields.items():
                 setattr(current, key, value)
+            current.dedup_key = dedup_key(current.title, current.company, current.location)
             set_internship_skills(db, current, skills)
             mark_index_pending(db, current.internship_id)
 

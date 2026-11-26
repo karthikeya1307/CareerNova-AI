@@ -1,0 +1,58 @@
+# Render Blueprint for the CareerNova AI backend (FastAPI).
+# Create it from YOUR Render account: Dashboard -> New -> Blueprint -> pick your private CareerNova-AI repo.
+# Secrets are NOT stored here: every "sync: false" value is typed into the Render dashboard by the owner.
+# The database is not created by this file - use Render PostgreSQL or Neon and enter its values (see
+# DEPLOYMENT_AND_HANDOVER_GUIDE.md, section 7).
+services:
+  - type: web
+    name: careernova-api
+    runtime: python
+    # A persistent disk (uploads) needs a paid instance. "standard" (2 GB RAM) is recommended because the
+    # local embedding model + PyTorch need about 1 GB; "starter" (512 MB) works only without the model
+    # (remove the download step below - search and matching then use the keyword fallback).
+    plan: standard
+    region: singapore
+    buildCommand: >-
+      pip install --upgrade pip &&
+      pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt &&
+      python -m backend.manage download-embedding-model
+    preDeployCommand: python -m alembic upgrade head
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT --proxy-headers
+    healthCheckPath: /health
+    autoDeploy: false
+    disk:
+      name: careernova-uploads
+      # The backend stores resumes, profile pictures, the email outbox and the search index under uploads/.
+      mountPath: /opt/render/project/src/uploads
+      sizeGB: 1
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.13
+      - key: DB_HOST
+        sync: false
+      - key: DB_PORT
+        value: "5432"
+      - key: DB_NAME
+        sync: false
+      - key: DB_USER
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: DB_SSLMODE
+        sync: false            # "require" for Neon / external connections; empty for Render's internal URL
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: CORS_ORIGINS
+        sync: false            # e.g. https://<your-project>.vercel.app
+      - key: FRONTEND_URL
+        sync: false            # same Vercel URL (used in email links)
+      - key: APP_BASE_URL
+        sync: false
+      - key: EMAIL_MODE
+        value: outbox          # switch to smtp after adding YOUR SMTP account (needed for email verification)
+      - key: LLM_PROVIDER
+        value: none            # groq after adding YOUR GROQ_API_KEY; Ollama is not available on Render
+      - key: FAISS_INDEX_DIR
+        value: /opt/render/project/src/uploads/search_index
+      - key: EMBEDDING_CACHE_DIR
+        value: .models

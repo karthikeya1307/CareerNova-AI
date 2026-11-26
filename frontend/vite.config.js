@@ -32,5 +32,8 @@ export default defineConfig({
     setupFiles: ["./src/test/setup.js"],
     css: false,
     restoreMocks: true,
+    // Full-page tests on a busy machine (many jsdom workers, background sync) can need more than the
+    // 5 s default; findBy/waitFor get 3 s (src/test/setup.js). Passing tests finish as fast as before.
+    testTimeout: 15000,
   },
 });

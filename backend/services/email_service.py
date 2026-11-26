@@ -1,136 +1,58 @@
+"""Account emails (verification, password reset, invitation, activation).
 
-import os
-import ssl
-import smtplib
+Thin wrappers around ``backend.services.mailer`` (modes, SMTP, templates, delivery log).
+``send_verification_email`` and ``send_password_reset_email`` keep their original signatures and
+raise ``RuntimeError`` when the message could not be delivered, so the existing auth flows keep
+their behaviour (e.g. 503 after registration). Links point at the frontend (FRONTEND_URL).
 
-from pathlib import Path
-from email.message import EmailMessage
-from dotenv import load_dotenv
-
-
-# Load environment variables from the project's .env file
-BASE_DIR = Path(__file__).resolve().parents[2]
-load_dotenv(BASE_DIR / ".env")
-
-
-SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
-SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
-SMTP_USERNAME = os.getenv("SMTP_USERNAME")
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "").replace(" ", "")
-MAIL_FROM = os.getenv("MAIL_FROM") or SMTP_USERNAME
-
-APP_BASE_URL = os.getenv(
-    "APP_BASE_URL",
-    "http://127.0.0.1:8000"
-)
-
-
-def send_verification_email(to_email: str, token: str) -> None:
-    """
-    Send an email containing a one-time verification link.
-    """
-
-    if not SMTP_USERNAME or not SMTP_PASSWORD or not MAIL_FROM:
-        raise RuntimeError(
-            "SMTP configuration is missing from .env"
-        )
-
-    verification_link = (
-        f"{APP_BASE_URL.rstrip('/')}"
-        f"/auth/verify-email?token={token}"
-    )
-
-    message = EmailMessage()
-
-    message["Subject"] = "Verify your AI Career Companion account"
-    message["From"] = MAIL_FROM
-    message["To"] = to_email
-
-    message.set_content(
-        f"""
-Hello,
-
-Thank you for registering with AI Career Companion.
-
-Please verify your email address using the link below:
-
-{verification_link}
-
-This link is intended for one-time use.
-
-If you did not create this account, you can ignore this email.
-
-Regards,
-AI Career Companion Team
+In the default EMAIL_MODE=outbox nothing is sent: messages are written to the local outbox folder.
 """
-    )
 
-    context = ssl.create_default_context()
+from __future__ import annotations
 
-    with smtplib.SMTP(
-        SMTP_HOST,
-        SMTP_PORT,
-        timeout=20
-    ) as server:
+from backend.services import mailer
 
-        server.ehlo()
-        server.starttls(context=context)
-        server.ehlo()
+VERIFICATION_EXPIRES_TEXT = "24 hours"
+RESET_EXPIRES_TEXT = "30 minutes"
+INVITATION_EXPIRES_TEXT = "72 hours"
 
-        server.login(SMTP_USERNAME, SMTP_PASSWORD)
-        server.send_message(message)
 
-def send_password_reset_email(to_email: str, token: str) -> None:
-    """Send a password-reset token by email."""
+class EmailDeliveryError(RuntimeError):
+    def __init__(self, result: mailer.DeliveryResult):
+        super().__init__(result.detail or "Email could not be delivered")
+        self.result = result
 
-    if not SMTP_USERNAME or not SMTP_PASSWORD or not MAIL_FROM:
-        raise RuntimeError("SMTP configuration is missing from .env")
 
-    docs_link = f"{APP_BASE_URL.rstrip('/')}/docs"
+def _require(result: mailer.DeliveryResult) -> mailer.DeliveryResult:
+    if not result.accepted:
+        raise EmailDeliveryError(result)
+    return result
 
-    message = EmailMessage()
-    message["Subject"] = "Reset your AI Career Companion password"
-    message["From"] = MAIL_FROM
-    message["To"] = to_email
 
-    message.set_content(
-        f"""
-Hello,
+def send_verification_email(to_email: str, token: str, user_id: int | None = None) -> mailer.DeliveryResult:
+    rendered = mailer.render("verification", link=mailer.frontend_link("/auth/verify-email", token),
+                             expires_text=VERIFICATION_EXPIRES_TEXT)
+    return _require(mailer.deliver("verification", to_email, rendered, user_id=user_id))
 
-We received a request to reset your AI Career Companion password.
 
-Your password-reset token is:
+def send_password_reset_email(to_email: str, token: str, user_id: int | None = None) -> mailer.DeliveryResult:
+    rendered = mailer.render("password_reset", link=mailer.frontend_link("/reset-password", token),
+                             expires_text=RESET_EXPIRES_TEXT)
+    return _require(mailer.deliver("password_reset", to_email, rendered, user_id=user_id))
 
-{token}
 
-This token expires in 30 minutes and can only be used once.
+def send_invitation_email(to_email: str, token: str, *, first_name: str | None = None,
+                          invited_by: str | None = None, user_id: int | None = None,
+                          invitation_id: int | None = None) -> mailer.DeliveryResult:
+    """Returns the outcome instead of raising: the account and invitation exist either way and the
+    administrator sees the delivery status (and can resend)."""
+    rendered = mailer.render("invitation", first_name=first_name, invited_by=invited_by,
+                             link=mailer.frontend_link("/accept-invitation", token),
+                             expires_text=INVITATION_EXPIRES_TEXT)
+    return mailer.deliver("invitation", to_email, rendered, user_id=user_id, invitation_id=invitation_id)
 
-To reset your password:
 
-1. Open the API documentation:
-   {docs_link}
-
-2. Find POST /auth/reset-password.
-
-3. Submit the token and your new password.
-
-If you did not request a password reset, you can ignore this email.
-
-Regards,
-AI Career Companion Team
-"""
-    )
-
-    context = ssl.create_default_context()
-
-    with smtplib.SMTP(
-        SMTP_HOST,
-        SMTP_PORT,
-        timeout=20
-    ) as server:
-        server.ehlo()
-        server.starttls(context=context)
-        server.ehlo()
-
-        server.login(SMTP_USERNAME, SMTP_PASSWORD)
-        server.send_message(message)
+def send_account_activated_email(to_email: str, first_name: str | None = None,
+                                 user_id: int | None = None) -> mailer.DeliveryResult:
+    rendered = mailer.render("account_activated", first_name=first_name, link=mailer.frontend_link("/login"))
+    return mailer.deliver("account_activated", to_email, rendered, user_id=user_id)

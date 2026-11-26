@@ -1,31 +1,57 @@
-﻿# AI Career Companion
+# CareerNova AI
 
-A backend application that combines user management and resume parsing to support an AI-powered career assistance platform.
+*Your Skills. Your Potential. Your Career.*
+
+CareerNova AI is a full-stack AI career companion for students: upload a resume, get it parsed and scored, find and
+apply to matching internships, close skill gaps, and prepare for interviews with two separate assistants.
 
 ## Project Overview
 
-AI Career Companion provides two core modules:
-
-1. **User Management APIs** – Registration, authentication, email verification, password management, user profiles, and session management.
-2. **Resume Parsing APIs** – PDF and DOCX resume uploads, structured information extraction, file storage, and retrieval of parsed resume data.
+- **Accounts and profile** – registration with email verification, JWT sessions, roles (student / admin / super admin),
+  profile with picture and bio.
+- **Resumes** – PDF, DOCX and ODT upload, structured extraction (skills, education, experience, projects with technologies),
+  manual corrections, multiple named versions with a preferred version, version comparison, resume readiness score.
+- **Internships** – curated internship knowledge base, natural-language search (role, skills, location, work mode), resume-to-internship matching with
+  explanations, ATS keyword checks, skill gaps with learning plans, tailored resumes and cover letters, application
+  tracking with interview rounds and reminders.
+- **Application Assistant** – step-by-step guidance through CareerNova AI using the student's real progress, answers
+  from the product guide and the student's own data; declines unrelated questions.
+- **Interview Preparation Assistant** – resume-based role recommendations, technical/HR questions with answer
+  guidance, preparation roadmap, mock interviews, and Q&A over uploaded study documents (PDF/DOCX) with citations.
+- **Optional AI** – off by default; Groq (hosted) or Ollama + Gemma 3 (local) can reword answers, always checked
+  against the sources.
 
 ## Technology Stack
 
 | Component | Technology |
 |---|---|
-| Backend | Python, FastAPI |
-| Database | PostgreSQL |
-| ORM | SQLAlchemy |
-| Database Migrations | Alembic |
-| Validation | Pydantic |
-| Authentication | JWT |
-| Password Hashing | Argon2 |
-| Email Service | Gmail SMTP |
-| PDF Processing | pypdf |
-| Embeddings | Sentence Transformers (`all-MiniLM-L6-v2`, local, CPU) |
-| Vector Search | FAISS (`faiss-cpu`), rebuilt from PostgreSQL |
-| DOCX Processing | python-docx |
-| API Documentation | Swagger / OpenAPI |
+| Frontend | React, Vite, Tailwind CSS (tests: Vitest, Testing Library, MSW) |
+| Backend | Python 3.13, FastAPI, Uvicorn |
+| Database | PostgreSQL 17, SQLAlchemy, Alembic |
+| Authentication | JWT access tokens + rotating refresh sessions, Argon2 password hashing |
+| Documents | pypdf (column-aware), python-docx |
+| Embeddings / RAG | Sentence Transformers (`all-MiniLM-L6-v2`, local, CPU), BM25 + vector hybrid retrieval, reranking, citations |
+| Vector index | Exact cosine search with NumPy (`.npz`, no pickle), rebuilt from PostgreSQL |
+| Optional LLM | Groq or Ollama (Gemma 3) |
+| Email | SMTP, or an outbox folder for development/testing |
+
+## Status and documentation
+
+| Document | Contents |
+|---|---|
+| `CAREERNOVA_IMPLEMENTATION_REPORT.md` | Architecture, features, fixes, test results, limitations, deployment readiness |
+| `CAREERNOVA_TEST_REPORT.md` | Every test run and live scenario with exact results |
+| `CAREERNOVA_DEMO_GUIDE.md` | Step-by-step demos |
+| `MANUAL_ACCEPTANCE_CHECKLIST.md` | 20-step manual acceptance test for the owner |
+| `DEPLOYMENT_AND_HANDOVER_GUIDE.md` | Local setup, environment variables, production deployment (Vercel + Render + PostgreSQL), troubleshooting |
+| `FINAL_DATABASE_MIGRATION_CHECKLIST.md` | Migration, backup, integrity check and rollback procedure |
+| `render.yaml`, `frontend/vercel.json` | Deployment configuration (no secrets) |
+
+Quick start (development): see `DEPLOYMENT_AND_HANDOVER_GUIDE.md` §1. Tests: `python -m pytest tests -q` (uses a
+separate `*_test` database only) and, in `frontend/`, `npx vitest run --maxWorkers=2` and `npm run build`.
+
+The phase-by-phase history below documents how the backend was built; all listed migrations are now applied to the
+development database (head `a7c9e1b3d5f6`) and the frontend (Phase 9) is complete.
 
 ## Project Structure
 
@@ -131,7 +157,7 @@ AI_CAREER_COMPANION/
 └── README.md
 ```
 
-## Implementation Status
+## Implementation History
 
 | Phase | Scope | Status |
 |---|---|---|
@@ -145,7 +171,7 @@ AI_CAREER_COMPANION/
 | 6 | Module 7: Interview preparation | ✅ Implemented — see the Phase 6 report. Pending on the development database: migration `f3c9e1a5b7d2` (after the Phase 1–5 migrations) |
 | 7 | Module 8: Application tracking | ✅ Implemented — see the Phase 7 report. Pending on the development database: migration `a9d3f6b2c8e4` (after the Phase 1–6 migrations) |
 | 8 | Module 9: Conversational career assistant | ✅ Implemented — see the Phase 8 report. Pending on the development database: migration `b2e8c4a7d1f5` (after the Phase 1–7 migrations) |
-| 9 | React + Vite frontend, full integration, final documentation | Planned |
+| 9 | React + Vite frontend, full integration, two assistants, study-document RAG, resume versions, final documentation | ✅ Done - see `CAREERNOVA_IMPLEMENTATION_REPORT.md` |
 
 Frontend requirement recorded for Phase 9: resume deletion is permanent, so the UI must ask for explicit confirmation before calling `DELETE /resumes/{resume_id}`.
 
@@ -168,9 +194,9 @@ Frontend requirement recorded for Phase 9: resume deletion is permanent, so the 
 
 ### 2. Resume Parsing
 
-- Upload PDF and DOCX resumes.
+- Upload PDF, DOCX and ODT (OpenDocument) resumes.
 - File type and size validation.
-- Extract text from PDF and DOCX documents.
+- Extract text from PDF, DOCX and ODT documents (scanned/image-only files need OCR, which is not supported).
 - Extract personal information such as name, email, phone number, and address.
 - Extract LinkedIn and GitHub information when available.
 - Extract professional summary and skills.
@@ -209,6 +235,18 @@ Frontend requirement recorded for Phase 9: resume deletion is permanent, so the 
 | POST | `/resumes/{resume_id}/reparse` | Parse the stored file again (history is kept) |
 | GET | `/resumes/{resume_id}/download` | Download the original file |
 | DELETE | `/resumes/{resume_id}` | Permanently delete a resume and its file |
+| POST | `/resumes/parse-preview?parser=regex\|llm\|hybrid` | Parse an uploaded file with one parser and return the common JSON; nothing is stored |
+| GET | `/resumes/{resume_id}/parse-preview?parser=...` | The same for a stored resume (owner only, nothing changed) |
+
+Three resume parsers live in `backend/services/resume_parsers/` and return one JSON schema (name, email, phone, technical skills, education, experience, projects, certifications, plus `metadata.parser`, `file_type`, `warnings`, `sources`):
+
+- `regex_parser.py` – rule-based, no network; the default upload uses the same extraction.
+- `llm_parser.py` – the configured AI provider (`LLM_PROVIDER`), with contact details removed before sending; name/email/phone are therefore always `null` and values not found in the resume text are dropped. `llm` and `hybrid` need `consent=true`.
+- `hybrid_parser.py` – regex for contact details, AI for the rest, every AI value checked against the text; falls back to regex results (with a warning) when the AI is unavailable.
+
+```bash
+python -m backend.manage parse-resume path/to/resume.odt --parser regex
+```
 
 Skills are normalized to canonical names (for example `React.js` → `React`, `A WS` → `AWS`). Unknown skills are kept with category `other`.
 
@@ -225,7 +263,7 @@ python -m backend.manage backfill-skills --apply
 |---|---|---|
 | GET | `/internships/` | List active internships (filters: `q`, `domain`, `work_mode`, `location`, `skill`) |
 | GET | `/internships/filters` | Available filter values |
-| GET | `/internships/search?q=` | Semantic search over the FAISS index |
+| GET | `/internships/search?q=` | Natural-language search: understands skills, roles, location and work mode, filters by them, ranks by exact matches + semantic similarity, and falls back to keywords if the index is unavailable. Unrelated queries return nothing rather than the whole catalogue. The catalogue lists internships only |
 | GET | `/internships/{internship_id}` | Internship detail |
 | POST / PATCH / DELETE | `/internships/...` | Admin only; DELETE deactivates (soft delete) |
 | GET | `/admin/index/status` | Admin: search index status |
@@ -251,6 +289,7 @@ Scores are 0–100: skills 50%, semantic similarity 20%, education 15%, location
 | POST | `/skill-gaps/resumes/{resume_id}` | Prioritised recommendations from the latest match run or selected internships |
 | GET | `/skill-gaps` | Your recommendations (filters: `resume_id`, `status`, `current_only`) |
 | PATCH | `/skill-gaps/{recommendation_id}` | Progress: `pending`, `in_progress`, `completed`, `dismissed` |
+| GET | `/skill-gaps/role-analysis?role=<slug>` | Skills grouped by category (demonstrated / listed only), a target role's requirements, fit and prioritised gaps with why, what to learn, a practical task and a resume tip. Without `role` it is a clearly labelled general analysis |
 
 Skills that appear on a re-parsed resume complete their recommendations automatically. Learning plans are curated in `backend/data/learning_plans.json` and contain no external links. See `docs/API_DOCUMENTATION.md` section 6C.
 
@@ -328,18 +367,38 @@ The assistant answers from the student's own data and the internship knowledge b
 | GET | `/profiles/me` | Get current user's profile |
 | PATCH | `/profiles/me` | Update current user's profile |
 
-### Administration APIs (admin role)
+### Administration APIs (admin or super admin)
 
-| Method | Endpoint | Description |
-|---|---|---|
-| GET | `/admin/users` | List users |
-| PATCH | `/admin/users/{user_id}/role` | Change a user's role |
+Roles: `student` (default), `admin`, and one protected `super_admin`.
 
-Create the first administrator from the command line:
+| Method | Endpoint | Who | Description |
+|---|---|---|---|
+| GET | `/admin/users?q=&role=&is_active=` | admin | List and search users (name/email) |
+| GET | `/admin/users/{user_id}` | admin | One user |
+| POST | `/admin/users` | admin (admin accounts: super admin) | Create a pending account; no password is set or shown (activation by invitation follows in Phase 2) |
+| POST | `/admin/users/{user_id}/deactivate` | admin for students, super admin for admins | Block sign-in and every API request, sign out all sessions; data is kept |
+| POST | `/admin/users/{user_id}/reactivate` | as above | Restore access |
+| PATCH | `/admin/users/{user_id}/role` | super admin | Change a role between `student` and `admin` |
+| GET | `/admin/audit-events` | admin | Audit log of administrative and security actions |
+
+The super admin cannot be demoted, deactivated or deleted through the API, and the `super_admin`
+role is never granted through the API. Failed sign-ins are throttled: 5 per email (or 50 per
+client address) within 15 minutes, then `429` with `Retry-After`. Audit records never contain
+passwords, hashes, tokens or credentials.
+
+Create the single super admin from the command line (the password is asked for twice with hidden
+input; it is never an argument and never printed; running the command again for the same email
+changes nothing):
 
 ```bash
-python -m backend.manage set-role admin@example.com admin
+python -m backend.manage create-superadmin --email owner@example.com --first-name Ada --last-name Admin
+# or make an existing verified account the super admin (its password is unchanged):
+python -m backend.manage create-superadmin --email owner@example.com --promote-existing
 ```
+
+Other administrators are promoted by the super admin in the app, or with
+`python -m backend.manage set-role <email> admin`. Apply the migration first
+(`alembic upgrade head`, revision `c6d2a8f4b1e3`).
 
 ## Installation and Setup
 
@@ -490,7 +549,7 @@ Additional project documentation is available in the `docs/` directory:
 - Optional AI writing never receives name, e-mail, phone, links or location, requires explicit per-document consent, and never logs API keys or resume content.
 - Semantic search results are always re-checked against PostgreSQL; inactive or deleted internships are never returned.
 - Index rebuilds run one at a time and are swapped in atomically; index files are verified by SHA-256 before loading.
-- No pickle files are downloaded or loaded (model weights are safetensors; the index is native FAISS format).
+- No pickle files are downloaded or loaded (model weights are safetensors; the index is a NumPy `.npz` file loaded with `allow_pickle=False`).
 
 - Passwords are stored as Argon2 hashes.
 - JWT access tokens have limited validity.
@@ -508,4 +567,4 @@ Resume parsing uses text extraction and rule-based parsing. Extraction accuracy 
 
 ## License
 
-This project is developed as part of an academic and technical assignment.
+This project is developed as part of technical assignment.

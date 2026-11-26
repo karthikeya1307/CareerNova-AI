@@ -19,13 +19,19 @@ export default function Modal({ title, children, footer, onClose }) {
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40 p-4">
-      <div ref={panel} role="dialog" aria-modal="true" aria-labelledby={titleId} className="w-full max-w-md rounded-lg bg-white shadow-xl">
-        <h2 id={titleId} className="border-b border-slate-100 px-5 py-3 text-base font-semibold">
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-navy-950/50 p-4 backdrop-blur-sm motion-safe:animate-fade-in">
+      <div
+        ref={panel}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white shadow-elevated motion-safe:animate-scale-in"
+      >
+        <h2 id={titleId} className="border-b border-slate-100 px-6 py-4 text-base font-semibold text-slate-900">
           {title}
         </h2>
-        <div className="px-5 py-4 text-sm text-slate-700">{children}</div>
-        {footer && <div className="flex justify-end gap-2 border-t border-slate-100 px-5 py-3">{footer}</div>}
+        <div className="px-6 py-5 text-sm text-slate-700">{children}</div>
+        {footer && <div className="flex flex-wrap justify-end gap-2 rounded-b-2xl border-t border-slate-100 bg-slate-50/60 px-6 py-4">{footer}</div>}
       </div>
     </div>
   );

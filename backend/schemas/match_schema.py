@@ -34,6 +34,9 @@ class MatchItem(BaseModel):
     caps_applied: list[str]
     explanation: list[str]
     internship: InternshipResponse
+    # P2 (additive): skill match, eligibility, application readiness, category, reasons,
+    # improvements and application link (backend/services/job_insights.py).
+    insights: dict | None = None
 
 
 class MatchRunResponse(BaseModel):

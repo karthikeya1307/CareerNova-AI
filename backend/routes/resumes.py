@@ -1,17 +1,21 @@
 
+import hashlib
 import io
+import json
 import logging
 import re
 import zipfile
 import uuid
 
 from pathlib import Path
+from typing import Literal
 
 from fastapi import (
     APIRouter,
     Depends,
     File,
     HTTPException,
+    Query,
     Response,
     UploadFile,
     status
@@ -26,6 +30,7 @@ from backend.database import get_db
 from backend.models import (
     User,
     Resume,
+    Internship,
     ResumeExtraction
 )
 
@@ -37,10 +42,14 @@ from backend.schemas.resume_schema import (
     ResumeUploadResponse,
     ResumeDetailResponse,
     ResumeListItem,
-    ResumeSkillsResponse
+    ResumeVersionUpdate,
+    ResumeSkillsResponse,
+    ResumeCorrection
 )
 
+from backend.services.resume_insights import analyze as analyze_resume
 from backend.services.resume_parser import parse_resume_file
+from backend.services.resume_readiness import score_resume
 from backend.services.resume_skills import (
     get_resume_skill_rows,
     sync_resume_skills
@@ -51,7 +60,7 @@ from backend.services.skill_gap import detect_acquired_skills
 logger = logging.getLogger(__name__)
 
 # Server-generated stored filenames: 32 hex chars + extension.
-STORED_FILENAME_PATTERN = re.compile(r"^[0-9a-f]{32}\.(pdf|docx)$")
+STORED_FILENAME_PATTERN = re.compile(r"^[0-9a-f]{32}\.(pdf|docx|odt)$")
 
 MEDIA_TYPES = {
     "pdf": "application/pdf",
@@ -59,6 +68,7 @@ MEDIA_TYPES = {
         "application/vnd.openxmlformats-officedocument."
         "wordprocessingml.document"
     ),
+    "odt": "application/vnd.oasis.opendocument.text",
 }
 
 
@@ -88,11 +98,20 @@ def validate_resume_file(
 
     extension = filename.lower().rsplit(".", 1)[-1]
 
-    if extension not in {"pdf", "docx"}:
+    if extension not in {"pdf", "docx", "odt"}:
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail="Only PDF and DOCX files are supported."
+            detail="Only PDF, DOCX and ODT files are supported."
         )
+
+    if extension == "odt":
+        # OpenDocument Text: ZIP with the ODT mimetype and content.xml (same size limits as DOCX).
+        from backend.services.resume_parsers.common import ResumeFileError, detect_format
+        try:
+            detect_format(file_bytes, filename)
+        except ResumeFileError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from None
+        return extension
 
     if extension == "pdf":
 
@@ -241,8 +260,53 @@ def build_detail_response(
         "extracted_data": ResumeParsedData.model_validate(
             extraction.extracted_data
         ),
-        "normalized_skills": skill_items(db, resume.resume_id)
+        "normalized_skills": skill_items(db, resume.resume_id),
+        "parser_type": extraction.parser_type,
+        "corrected": extraction.parser_type == USER_CORRECTED,
     }
+
+
+USER_CORRECTED = "user_corrected"
+MAX_DUPLICATE_SCAN = 50
+
+
+def content_fingerprint(data: dict) -> str:
+    """Hash of the extracted content (case/whitespace-insensitive), to spot re-exported copies."""
+    def norm(value):
+        if isinstance(value, str):
+            return " ".join(value.lower().split())
+        if isinstance(value, list):
+            return [norm(v) for v in value]
+        if isinstance(value, dict):
+            return {k: norm(v) for k, v in sorted(value.items())}
+        return value
+    return hashlib.sha256(json.dumps(norm(data), sort_keys=True).encode("utf-8")).hexdigest()
+
+
+def find_duplicates(db: Session, user_id: int, file_bytes: bytes, data: dict) -> tuple[str | None, list[int]]:
+    """Earlier resumes of this user with the identical file, or else the same extracted content.
+
+    Informational only: the upload still succeeds (existing clients are unaffected)."""
+    resumes = list(db.scalars(select(Resume).where(Resume.user_id == user_id)
+                              .order_by(Resume.resume_id.desc()).limit(MAX_DUPLICATE_SCAN)))
+    file_hash = hashlib.sha256(file_bytes).hexdigest()
+    same_file = []
+    for resume in resumes:
+        path = resolve_stored_path(resume)
+        try:
+            if path is not None and path.is_file() and hashlib.sha256(path.read_bytes()).hexdigest() == file_hash:
+                same_file.append(resume.resume_id)
+        except OSError:
+            continue
+    if same_file:
+        return "identical_file", sorted(same_file)
+    fingerprint = content_fingerprint(data)
+    same_content = []
+    for resume in resumes:
+        extraction = latest_completed_extraction(db, resume.resume_id)
+        if extraction is not None and content_fingerprint(extraction.extracted_data or {}) == fingerprint:
+            same_content.append(resume.resume_id)
+    return ("same_content", sorted(same_content)) if same_content else (None, [])
 
 
 # ============================================================
@@ -313,6 +377,11 @@ async def upload_resume(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Unable to parse the uploaded resume."
         )
+
+    # Earlier uploads of the same file/content (reported, not blocked).
+    duplicate_kind, duplicate_of = find_duplicates(
+        db, current_user.user_id, file_bytes, parsed_data.model_dump(mode="json")
+    )
 
     # Create a private storage folder for this user.
     user_upload_dir = UPLOAD_DIR / str(current_user.user_id)
@@ -403,7 +472,9 @@ async def upload_resume(
                 source=item.source
             )
             for skill, item in skill_pairs
-        ]
+        ],
+        duplicate_of=duplicate_of,
+        duplicate_kind=duplicate_kind,
     )
 
 # ============================================================
@@ -426,6 +497,9 @@ def get_user_resumes(
         .where(Resume.user_id == current_user.user_id)
         .order_by(Resume.uploaded_at.desc())
     ).all()
+    # Version numbers follow upload order (V1 = first upload); they never change when newer versions arrive.
+    order = sorted(resumes, key=lambda r: (r.uploaded_at, r.resume_id))
+    version = {r.resume_id: i for i, r in enumerate(order, start=1)}
 
     return [
         {
@@ -433,10 +507,83 @@ def get_user_resumes(
             "filename": resume.filename,
             "file_type": resume.file_type,
             "status": resume.status,
-            "uploaded_at": resume.uploaded_at
+            "uploaded_at": resume.uploaded_at,
+            "version": version[resume.resume_id],
+            "label": resume.label,
+            "is_preferred": bool(resume.is_preferred),
         }
         for resume in resumes
     ]
+
+
+# ============================================================
+# RESUME VERSIONS: compare two versions, rename, mark preferred
+# GET   /resumes/compare?a=&b=&role=&internship_id=
+# PATCH /resumes/{resume_id}  {label?, is_preferred?}
+# ============================================================
+
+@router.get("/compare")
+def compare_resumes(
+    a: int = Query(..., ge=1, description="Older / first version"),
+    b: int = Query(..., ge=1, description="Newer / second version"),
+    role: str | None = Query(default=None, max_length=60, pattern="^[a-z0-9-]+$"),
+    internship_id: int | None = Query(default=None, ge=1),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Compare two of MY resume versions with the same engines (readiness, role fit, ATS report)."""
+    from backend.services import career_tracks, resume_compare
+
+    if a == b:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Choose two different versions.")
+    first, second = get_owned_resume(db, a, current_user), get_owned_resume(db, b, current_user)
+    track = None
+    if role:
+        track = career_tracks.get_track(role)
+        if track is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Role not found")
+    internship = None
+    if internship_id is not None:
+        internship = db.get(Internship, internship_id)
+        if internship is None or not internship.is_active:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Internship not found")
+    try:
+        return resume_compare.compare(db, first, second, track, internship)
+    except resume_compare.CompareError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from None
+
+
+@router.patch("/{resume_id}", response_model=ResumeListItem)
+def update_resume_version(
+    resume_id: int,
+    body: ResumeVersionUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    resume = get_owned_resume(db, resume_id, current_user)
+    provided = body.model_fields_set
+    if not provided:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Provide label and/or is_preferred.")
+    if "label" in provided:
+        resume.label = body.label
+    if "is_preferred" in provided and body.is_preferred is not None:
+        if body.is_preferred:
+            if resume.status != "completed":
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                                    detail="Only a successfully parsed resume can be your preferred version.")
+            for other in db.scalars(select(Resume).where(Resume.user_id == current_user.user_id,
+                                                         Resume.is_preferred.is_(True),
+                                                         Resume.resume_id != resume.resume_id)):
+                other.is_preferred = False
+            db.flush()
+        resume.is_preferred = body.is_preferred
+    db.commit()
+    db.refresh(resume)
+    order = db.scalars(select(Resume.resume_id).where(Resume.user_id == current_user.user_id)
+                       .order_by(Resume.uploaded_at, Resume.resume_id)).all()
+    return {"resume_id": resume.resume_id, "filename": resume.filename, "file_type": resume.file_type,
+            "status": resume.status, "uploaded_at": resume.uploaded_at, "version": list(order).index(resume.resume_id) + 1,
+            "label": resume.label, "is_preferred": bool(resume.is_preferred)}
 
 
 # ============================================================
@@ -663,3 +810,175 @@ def delete_resume(
             )
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# ============================================================
+# PARSER COMPARISON (read-only: nothing is stored)
+# POST /resumes/parse-preview?parser=regex|llm|hybrid   (upload a PDF/DOCX/ODT)
+# GET  /resumes/{resume_id}/parse-preview?parser=...    (one of MY stored resumes)
+# ============================================================
+
+def _run_parser(parser: str, file_bytes: bytes, filename: str, consent: bool) -> dict:
+    from backend.services import resume_parsers
+    from backend.services.resume_parsers import llm_parser
+
+    if parser in ("llm", "hybrid") and not consent:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="AI parsing sends the resume text (without name, email, phone and links) to the configured AI "
+                   "provider. Add consent=true to allow it, or use parser=regex."
+        )
+    try:
+        return resume_parsers.run(parser, file_bytes, filename).as_dict()
+    except resume_parsers.ResumeFileError as exc:
+        unsupported = str(exc).startswith("Unsupported")
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE if unsupported else status.HTTP_400_BAD_REQUEST,
+            detail=str(exc)
+        ) from None
+    except llm_parser.LLMParserUnavailable as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from None
+    except llm_parser.LLMParserError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from None
+
+
+@router.post("/parse-preview")
+async def parse_preview_upload(
+    parser: Literal["regex", "llm", "hybrid"] = Query(default="regex"),
+    consent: bool = Query(default=False),
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+):
+    """Run one of the three parsers on an uploaded file and return the common JSON schema. Nothing is saved."""
+    original = (file.filename or "").replace("\\", "/").split("/")[-1]
+    file_bytes = await file.read(MAX_FILE_SIZE + 1)
+    if len(file_bytes) > MAX_FILE_SIZE:
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="File size must not exceed 5 MB.")
+    return _run_parser(parser, file_bytes, original, consent)
+
+
+@router.get("/{resume_id}/parse-preview")
+def parse_preview_stored(
+    resume_id: int,
+    parser: Literal["regex", "llm", "hybrid"] = Query(default="regex"),
+    consent: bool = Query(default=False),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Run a parser on one of my stored resume files. The stored extraction (and any corrections) is not changed."""
+    resume = get_owned_resume(db, resume_id, current_user)
+    path = resolve_stored_path(resume)
+    if path is None or not path.is_file():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="The original file is not available.")
+    return _run_parser(parser, path.read_bytes(), f"resume.{resume.file_type}", consent)
+
+
+# ============================================================
+# P2: ANALYSIS, READINESS AND CORRECTIONS
+# GET /resumes/{resume_id}/analysis     parsing confidence, missing fields, dates
+# GET /resumes/{resume_id}/readiness    general resume readiness score (0-100)
+# PUT /resumes/{resume_id}/extracted-data   the student's corrections
+# ============================================================
+
+def require_extraction(db: Session, resume: Resume) -> ResumeExtraction:
+    extraction = latest_completed_extraction(db, resume.resume_id)
+    if extraction is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This resume has no successful extraction yet. Re-parse it first."
+        )
+    return extraction
+
+
+@router.get("/{resume_id}/analysis")
+def get_resume_analysis(
+    resume_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    resume = get_owned_resume(db, resume_id, current_user)
+    extraction = require_extraction(db, resume)
+    return {
+        "resume_id": resume.resume_id,
+        "parser_type": extraction.parser_type,
+        "corrected": extraction.parser_type == USER_CORRECTED,
+        **analyze_resume(extraction.extracted_data or {}),
+    }
+
+
+@router.get("/{resume_id}/readiness")
+def get_resume_readiness(
+    resume_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """General resume readiness (not job-specific). Recalculated from the latest data on every call.
+
+    Also says which version was scored and which of the student's other versions have identical extracted
+    content - those always get the same score, which explains a score that "doesn't change" after
+    uploading the same resume again. Profile details are not an input."""
+    resume = get_owned_resume(db, resume_id, current_user)
+    extraction = require_extraction(db, resume)
+    data = extraction.extracted_data or {}
+    mine = list(db.scalars(select(Resume).where(Resume.user_id == current_user.user_id)))
+    order = sorted(mine, key=lambda r: (r.uploaded_at, r.resume_id))
+    version = {r.resume_id: i for i, r in enumerate(order, start=1)}
+    fingerprint = content_fingerprint(data)
+    same_content = []
+    for other in order:
+        if other.resume_id == resume.resume_id:
+            continue
+        other_extraction = latest_completed_extraction(db, other.resume_id)
+        if other_extraction is not None and content_fingerprint(other_extraction.extracted_data or {}) == fingerprint:
+            same_content.append({"resume_id": other.resume_id, "version": version[other.resume_id]})
+    return {
+        "resume_id": resume.resume_id,
+        "version": version[resume.resume_id],
+        "filename": resume.filename,
+        "version_label": resume.label,   # the student's name for the version ("label" is the score's label)
+        "is_preferred": bool(resume.is_preferred),
+        "corrected": extraction.parser_type == USER_CORRECTED,
+        "scored_at": extraction.created_at,
+        "basis": "resume_content",       # only the extracted resume content; profile details are not used
+        "same_content_as": same_content,
+        **score_resume(data),
+    }
+
+
+@router.put(
+    "/{resume_id}/extracted-data",
+    response_model=ResumeDetailResponse
+)
+def correct_extracted_data(
+    resume_id: int,
+    correction: ResumeCorrection,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Save the student's corrected data as a new extraction (the parser's version is kept).
+
+    Matching, documents, skill gaps and the assistant all read the newest extraction, so the
+    correction applies everywhere. A later re-parse replaces it with the parser's output again.
+    """
+    resume = get_owned_resume(db, resume_id, current_user)
+    data = ResumeParsedData.model_validate(correction.model_dump()).model_dump(mode="json")
+    try:
+        extraction = ResumeExtraction(
+            resume_id=resume.resume_id,
+            parser_type=USER_CORRECTED,
+            extracted_data=data,
+            status="completed"
+        )
+        db.add(extraction)
+        sync_resume_skills(db, resume.resume_id, data)
+        detect_acquired_skills(db, resume.resume_id)
+        resume.status = "completed"
+        db.commit()
+        db.refresh(extraction)
+    except Exception:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to save the corrections."
+        )
+    return build_detail_response(db, resume, extraction)

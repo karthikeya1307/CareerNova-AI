@@ -162,6 +162,7 @@ def create_session(
     difficulty: str,
     time_limit_seconds: int | None,
     provider: LLMProvider | None,
+    role: dict[str, Any] | None = None,
 ) -> tuple[InterviewSession, FactCheckLog]:
     sequence = db.scalar(select(func.count()).select_from(InterviewSession)
                          .where(InterviewSession.user_id == user_id)) or 0
@@ -169,6 +170,7 @@ def create_session(
         mix=mix, difficulty=difficulty,
         seed=session_seed(user_id, resume.resume_id, internship.internship_id if internship else None, sequence),
         exclude_behavioral=recent_behavioral_ids(db, user_id),
+        role_skills=((tuple(role["core_skills"]), tuple(role.get("advanced_skills", []))) if role else None),
     )
     specs = generate_questions(candidate, internship, request)
     notices = generation_notices(candidate, internship, request, specs)
@@ -182,7 +184,8 @@ def create_session(
     )} if any(q.get("skill") for q in specs) else {}
 
     title = (f"{'Mock' if mode == 'mock' else 'Practice'} interview - "
-             + (f"{internship.title} at {internship.company}" if internship else "general"))[:255]
+             + (f"{internship.title} at {internship.company}" if internship
+                else role["title"] if role else "general"))[:255]
     session = InterviewSession(
         user_id=user_id, resume_id=resume.resume_id,
         internship_id=internship.internship_id if internship else None,
@@ -192,7 +195,7 @@ def create_session(
         llm_model=provider.model if (provider and log.llm_accepted) else None,
         total_questions=len(specs), answered_count=0,
         summary={"generation": log.as_dict(), "requested_questions": sum(int(v) for v in mix.values()),
-                 "notices": notices},
+                 "notices": notices, **({"target_role": role["slug"], "target_role_title": role["title"]} if role else {})},
     )
     db.add(session)
     db.flush()

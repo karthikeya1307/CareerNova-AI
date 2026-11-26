@@ -166,20 +166,38 @@ class SentenceTransformerEmbedder:
 # ------------------------------------------------------------------
 
 _embedder: Embedder | None = None
+_load_error: EmbeddingError | None = None
 _embedder_lock = threading.Lock()
 
 
 def get_embedder() -> Embedder:
-    global _embedder
+    """The process-wide embedder. Any failure to load the model (missing files, a blocked native
+    library such as torch under Windows Application Control, ...) is raised as ``EmbeddingError`` so
+    every caller can fall back, and is remembered: torch cannot be imported twice in one process, so
+    retrying on every request would only fail differently. Restart the server after fixing it."""
+    global _embedder, _load_error
     if _embedder is None:
         with _embedder_lock:
             if _embedder is None:
-                _embedder = SentenceTransformerEmbedder()
+                if _load_error is not None:
+                    raise _load_error
+                try:
+                    _embedder = SentenceTransformerEmbedder()
+                except EmbeddingError as exc:
+                    _load_error = exc
+                    raise
+                except Exception as exc:
+                    _load_error = EmbeddingError(
+                        f"The embedding model could not be loaded ({type(exc).__name__}); "
+                        "semantic features are unavailable until the server is restarted."
+                    )
+                    raise _load_error from None
     return _embedder
 
 
 def set_embedder(embedder: Embedder | None) -> None:
-    """Replace the provider (used by tests and future providers)."""
-    global _embedder
+    """Replace the provider (used by tests and future providers); clears a remembered load failure."""
+    global _embedder, _load_error
     with _embedder_lock:
         _embedder = embedder
+        _load_error = None

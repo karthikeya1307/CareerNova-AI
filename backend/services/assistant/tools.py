@@ -137,8 +137,9 @@ def choose_resume(db: Session, user_id: int, preferred_resume_id: int | None) ->
                                                 Resume.user_id == user_id))
         if resume is not None and latest_completed_extraction(db, resume.resume_id) is not None:
             return resume
+    # The student's preferred version first (if parsed), then the newest parsed resume.
     for resume in db.scalars(select(Resume).where(Resume.user_id == user_id)
-                             .order_by(Resume.uploaded_at.desc(), Resume.resume_id.desc())):
+                             .order_by(Resume.is_preferred.desc(), Resume.uploaded_at.desc(), Resume.resume_id.desc())):
         if latest_completed_extraction(db, resume.resume_id) is not None:
             return resume
     return None

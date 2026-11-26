@@ -1,8 +1,8 @@
 {
-  "name": "ai-career-companion-frontend",
+  "name": "careernova-ai-frontend",
   "private": true,
   "version": "0.1.0",
-  "description": "React + Vite frontend for the AI Career Companion FastAPI backend.",
+  "description": "CareerNova AI web app (React + Vite) for the FastAPI backend.",
   "type": "module",
   "engines": {
     "node": ">=22.12.0"

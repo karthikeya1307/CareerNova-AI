@@ -31,10 +31,20 @@ describe("routing smoke test", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Cannot reach the server");
   });
 
-  it("redirects signed-out users to /login and remembers where they were going", async () => {
+  it("redirects signed-out users to /login and returns them there after signing in", async () => {
+    server.use(
+      http.post("/api/auth/login", () =>
+        HttpResponse.json({ access_token: "a1", refresh_token: "r".repeat(40), token_type: "bearer", expires_in: 900, refresh_expires_in: 1 }),
+      ),
+      http.get("/api/auth/me", () => HttpResponse.json(student)),
+    );
     renderAt("/resumes?tab=skills");
     expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
-    expect(screen.getByText(/return to \/resumes\?tab=skills/)).toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText("Email address"), "s@example.com");
+    await user.type(screen.getByLabelText("Password"), "correct-horse-1");
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+    expect(await screen.findByRole("heading", { name: "Resumes" })).toBeInTheDocument();
   });
 
   it("shows protected pages to signed-in users", async () => {
@@ -45,7 +55,7 @@ describe("routing smoke test", () => {
 
   it("keeps students out of admin pages", async () => {
     renderAt("/admin/users", { initialUser: student });
-    expect(await screen.findByText("You don't have access to this page")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: "You don't have access to this page" })).toBeInTheDocument();
   });
 
   it("lets administrators open admin pages and shows the admin menu", async () => {
@@ -123,7 +133,9 @@ describe("routing smoke test", () => {
       }),
     );
     renderAt("/profile", { initialUser: student, restoreSession: false });
-    await userEvent.click(await screen.findByRole("button", { name: "Sign out" }));
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /account menu/ }));
+    await user.click(screen.getByRole("menuitem", { name: "Sign out" }));
     expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
     expect(revoked).toBe("r1");
     expect(window.sessionStorage.getItem("acc.refresh_token")).toBeNull();
@@ -131,7 +143,7 @@ describe("routing smoke test", () => {
 
   it("shows a 404 page for unknown routes", () => {
     renderAt("/does-not-exist");
-    expect(screen.getByText("Page not found")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Page not found" })).toBeInTheDocument();
   });
 });
 

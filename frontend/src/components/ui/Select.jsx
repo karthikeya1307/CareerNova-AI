@@ -4,7 +4,7 @@ export default function Select({ label, error, options = [], id, className = "",
   const autoId = useId();
   const selectId = id || autoId;
   return (
-    <div className={`flex flex-col gap-1 ${className}`}>
+    <div className={`flex flex-col gap-1.5 ${className}`}>
       {label && (
         <label htmlFor={selectId} className="text-sm font-medium text-slate-700">
           {label}
@@ -14,9 +14,7 @@ export default function Select({ label, error, options = [], id, className = "",
         id={selectId}
         aria-invalid={error ? true : undefined}
         aria-describedby={error ? `${selectId}-error` : undefined}
-        className={`rounded-md border bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500 ${
-          error ? "border-red-400" : "border-slate-300"
-        }`}
+        className={`cn-input ${error ? "border-red-400 hover:border-red-400 focus:border-red-500 focus:ring-red-100" : ""}`}
         {...props}
       >
         {options.map((option) => (

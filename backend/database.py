@@ -27,6 +27,10 @@ if not DB_PASSWORD:
 
 
 # Build the connection URL safely
+# Managed PostgreSQL (Neon, Render external URL, ...) needs TLS: set DB_SSLMODE=require there.
+# Unset locally, so development and tests connect exactly as before.
+DB_SSLMODE = os.getenv("DB_SSLMODE", "").strip()
+
 DATABASE_URL = URL.create(
     "postgresql+psycopg",
     username=DB_USER,
@@ -34,6 +38,7 @@ DATABASE_URL = URL.create(
     host=DB_HOST,
     port=DB_PORT,
     database=DB_NAME,
+    query={"sslmode": DB_SSLMODE} if DB_SSLMODE else {},
 )
 
 # Create the SQLAlchemy engine

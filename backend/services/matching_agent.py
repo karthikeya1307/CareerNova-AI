@@ -2,13 +2,13 @@
 
 Pipeline:
     1. Build the candidate (skills, degree, location, query text).
-    2. Retrieve candidates: FAISS nearest neighbours UNION every active
+    2. Retrieve candidates: vector-index nearest neighbours UNION every active
        internship sharing at least one skill with the resume.
     3. Re-check each candidate in PostgreSQL (active, deadline not passed,
        optional work-mode filter).
     4. Score each with compatibility.compute_compatibility. The semantic
-       similarity of candidates outside the FAISS top-N is computed from
-       the stored vector (IndexIDMap2.reconstruct), so every candidate is
+       similarity of candidates outside the index top-N is computed from
+       the stored vector (NumpyIndex.reconstruct), so every candidate is
        scored the same way.
     5. Rank deterministically and persist the top k as one run.
 

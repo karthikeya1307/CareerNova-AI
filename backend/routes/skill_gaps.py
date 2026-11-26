@@ -294,3 +294,84 @@ def update_recommendation(
     db.commit()
     db.refresh(rec)
     return to_item(rec)
+
+
+# ============================================================
+# P3: SKILL PROGRESS AND PER-JOB ROADMAP
+# GET  /skill-gaps/progress                       {skill: {status, updated_at}}
+# PUT  /skill-gaps/progress   {skill, status}     not_started | learning | practiced | completed
+# GET  /skill-gaps/resumes/{rid}/internships/{iid}/roadmap
+# ============================================================
+
+from pydantic import BaseModel as _BaseModel, Field as _Field  # noqa: E402
+
+from backend.services import job_insights as _job_insights, skill_progress as _progress  # noqa: E402
+from backend.services.skill_gap import assess_internship as _assess, candidate_skill_names as _skills  # noqa: E402
+
+
+class SkillProgressUpdate(_BaseModel):
+    skill: str = _Field(min_length=1, max_length=60)
+    status: str = _Field(pattern="^(not_started|learning|practiced|completed)$")
+
+
+@router.get("/progress")
+def get_skill_progress(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return {"statuses": list(_progress.STATUSES), "labels": _progress.LABELS,
+            "skills": _progress.statuses_for(db, current_user.user_id)}
+
+
+@router.put("/progress")
+def set_skill_progress(
+    payload: SkillProgressUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        skill = _progress.resolve_skill(db, payload.skill)
+    except _progress.UnknownSkillError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    progress = _progress.set_status(db, current_user.user_id, skill, payload.status)
+    db.commit()
+    db.refresh(progress)
+    return {"skill": skill.name, "status": progress.status, "status_label": _progress.LABELS[progress.status],
+            "updated_at": progress.updated_at}
+
+
+@router.get("/resumes/{resume_id}/internships/{internship_id}/roadmap")
+def get_job_roadmap(
+    resume_id: int,
+    internship_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Ordered learning roadmap for one job: missing and partial skills with plans and progress."""
+    resume = get_owned_resume(db, resume_id, current_user)
+    internship = load_internships(db, [internship_id]).get(internship_id)
+    if internship is None or not internship.is_active:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Internship not found")
+    candidate = _skills(db, resume.resume_id)
+    match = _job_insights.skill_match(_assess(candidate, internship))
+    return {"resume_id": resume.resume_id,
+            **_progress.roadmap(db, current_user.user_id, candidate, internship, match)}
+
+
+@router.get("/role-analysis")
+def role_analysis(
+    role: str | None = Query(default=None, max_length=80, pattern=r"^[a-z0-9-]+$"),
+    resume_id: int | None = Query(default=None, ge=1),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Skills grouped by area with evidence, the target role's requirements and prioritised gaps.
+
+    Without ``role`` the answer is a clearly labelled general analysis (no gaps)."""
+    from backend.services import skill_analysis
+
+    try:
+        return skill_analysis.analyse(db, current_user.user_id, role, resume_id)
+    except skill_analysis.AnalysisError as exc:
+        code = status.HTTP_409_CONFLICT if exc.code == "resume_required" else status.HTTP_404_NOT_FOUND
+        raise HTTPException(status_code=code, detail={"code": exc.code, "message": str(exc)})

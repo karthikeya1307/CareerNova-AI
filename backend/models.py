@@ -49,6 +49,18 @@ class User(Base):
             "user_uuid",
             name="uq_users_user_uuid"
         ),
+        # Keep in sync with backend/utils/roles.VALID_ROLES.
+        CheckConstraint(
+            "role IN ('student', 'admin', 'super_admin')",
+            name="ck_users_role"
+        ),
+        # At most one super admin, enforced by the database.
+        Index(
+            "uq_users_single_super_admin",
+            "role",
+            unique=True,
+            postgresql_where=text("role = 'super_admin'"),
+        ),
     )
     user_id: Mapped[int] = mapped_column(primary_key=True)
 
@@ -93,6 +105,24 @@ class User(Base):
         default=False,
         server_default="false",
         nullable=False
+    )
+
+    # Deactivated accounts cannot sign in or use any API; their data is kept.
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        server_default=text("true"),
+        nullable=False
+    )
+
+    deactivated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True
+    )
+
+    last_login_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True
     )
     
     created_at: Mapped[datetime] = mapped_column(
@@ -176,6 +206,16 @@ class StudentProfile(Base):
     degree: Mapped[str | None] = mapped_column(String(150))
     graduation_year: Mapped[int | None] = mapped_column(Integer)
     location: Mapped[str | None] = mapped_column(String(150))
+    # Profile enhancement: a short professional introduction and an optional profile picture
+    # (stored under uploads/avatars/<user id>/, served only to its owner).
+    bio: Mapped[str | None] = mapped_column(Text)
+    avatar_path: Mapped[str | None] = mapped_column(String(500))
+    avatar_content_type: Mapped[str | None] = mapped_column(String(30))
+    avatar_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    @property
+    def has_avatar(self) -> bool:
+        return bool(self.avatar_path)
 
     user: Mapped["User"] = relationship(
         back_populates="profile"
@@ -184,6 +224,10 @@ class StudentProfile(Base):
 
 class Resume(Base):
     __tablename__ = "resumes"
+    __table_args__ = (
+        Index("uq_resumes_one_preferred_per_user", "user_id", unique=True,
+              postgresql_where=text("is_preferred")),
+    )
 
     resume_id: Mapped[int] = mapped_column(primary_key=True)
 
@@ -210,6 +254,10 @@ class Resume(Base):
         server_default=func.now(),
         nullable=False,
     )
+    # Resume versions: an optional name ("Internship-focused") and the student's preferred/current version
+    # (at most one per student; NULL label and false = the previous behaviour).
+    label: Mapped[str | None] = mapped_column(String(120))
+    is_preferred: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"), default=False)
 
     user: Mapped["User"] = relationship(
         back_populates="resumes"
@@ -407,6 +455,13 @@ class Internship(Base):
     is_active: Mapped[bool] = mapped_column(
         Boolean, default=True, nullable=False
     )
+
+    # Job-source tracking (P3). None means "not known" - never guessed.
+    source_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)    # where the listing came from
+    posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # sha256 of the normalised "title|company|location", used to spot duplicate listings.
+    dedup_key: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -1637,3 +1692,183 @@ class PasswordResetToken(Base):
         server_default=func.now(),
         nullable=False
     )
+
+
+# ============================================================
+# ACCOUNT SECURITY (Phase 1 of the admin upgrade)
+# ============================================================
+
+class AdminAuditEvent(Base):
+    """Append-only record of administrative and security actions.
+
+    ``details`` holds only identifiers, roles and changed field names/values;
+    never passwords, password hashes, tokens or credentials
+    (backend/services/audit.py enforces this).
+    """
+
+    __tablename__ = "admin_audit_events"
+    __table_args__ = (
+        Index("ix_admin_audit_events_created_at", "created_at"),
+        Index("ix_admin_audit_events_actor", "actor_user_id"),
+        Index("ix_admin_audit_events_target", "target_user_id"),
+        Index("ix_admin_audit_events_action", "action"),
+    )
+
+    event_id: Mapped[int] = mapped_column(primary_key=True)
+    actor_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.user_id", ondelete="SET NULL"), nullable=True)
+    actor_role: Mapped[str | None] = mapped_column(String(30), nullable=True)   # None = command line / system
+    action: Mapped[str] = mapped_column(String(50), nullable=False)
+    target_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.user_id", ondelete="SET NULL"), nullable=True)
+    target_label: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    details: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    ip_address: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class AuthRateLimit(Base):
+    """Failed sign-in counters per (bucket, hashed key, window).
+
+    Incremented with one atomic INSERT ... ON CONFLICT DO UPDATE ... RETURNING,
+    so concurrent attempts can never both slip under the limit. Email keys are
+    stored only as SHA-256 hashes.
+    """
+
+    __tablename__ = "auth_rate_limits"
+    __table_args__ = (
+        CheckConstraint("bucket IN ('login_email', 'login_ip')", name="ck_auth_rate_limits_bucket"),
+        CheckConstraint("count >= 0", name="ck_auth_rate_limits_count"),
+        Index("ix_auth_rate_limits_window", "window_start"),
+    )
+
+    bucket: Mapped[str] = mapped_column(String(20), primary_key=True)
+    key_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+
+
+# ============================================================
+# INVITATIONS AND EMAIL DELIVERY LOG (Phase 2 of the admin upgrade)
+# ============================================================
+
+class UserInvitation(Base):
+    """A single-use, expiring link that lets a pending account set its own password.
+
+    Only the SHA-256 hash of the token is stored. Sending a new invitation revokes the previous one.
+    """
+
+    __tablename__ = "user_invitations"
+    __table_args__ = (
+        Index("ix_user_invitations_user", "user_id"),
+        Index("ix_user_invitations_created_at", "created_at"),
+    )
+
+    invitation_id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False)
+    invited_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.user_id", ondelete="SET NULL"), nullable=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    delivery_status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="pending")
+    delivery_error: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class EmailDelivery(Base):
+    """Outcome of every email attempt (no message body, links or tokens are stored)."""
+
+    __tablename__ = "email_deliveries"
+    __table_args__ = (
+        CheckConstraint("status IN ('sent', 'outboxed', 'skipped', 'failed')", name="ck_email_deliveries_status"),
+        Index("ix_email_deliveries_created_at", "created_at"),
+        Index("ix_email_deliveries_user", "user_id"),
+    )
+
+    delivery_id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String(30), nullable=False)
+    recipient: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    error_code: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.user_id", ondelete="SET NULL"), nullable=True)
+    invitation_id: Mapped[int | None] = mapped_column(
+        ForeignKey("user_invitations.invitation_id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+# ============================================================
+# SKILL PROGRESS (P3)
+# ============================================================
+
+class SkillProgress(Base):
+    """A student's learning progress for one skill (applies to every job that needs it)."""
+
+    __tablename__ = "skill_progress"
+    __table_args__ = (
+        UniqueConstraint("user_id", "skill_id", name="uq_skill_progress_user_skill"),
+        CheckConstraint("status IN ('not_started', 'learning', 'practiced', 'completed')",
+                        name="ck_skill_progress_status"),
+    )
+
+    progress_id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False, index=True)
+    skill_id: Mapped[int] = mapped_column(ForeignKey("skills.skill_id", ondelete="CASCADE"), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="not_started")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class StudyDocument(Base):
+    """A PDF/DOCX a student uploaded to ask questions about (HR assignment: document Q&A).
+
+    Only the extracted text is kept (in ``study_document_chunks``); the original file is not stored.
+    Owned by one user; deleting the user deletes their documents.
+    """
+
+    __tablename__ = "study_documents"
+    __table_args__ = (
+        UniqueConstraint("user_id", "sha256", name="uq_study_documents_user_sha256"),
+        CheckConstraint("file_type IN ('pdf', 'docx')", name="ck_study_documents_file_type"),
+    )
+
+    document_id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False, index=True)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    file_type: Mapped[str] = mapped_column(String(10), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    page_count: Mapped[int | None] = mapped_column(Integer)          # PDF pages; None for DOCX
+    section_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    char_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    chunk_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    title: Mapped[str | None] = mapped_column(String(255))
+    warnings: Mapped[list | None] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    chunks: Mapped[list["StudyDocumentChunk"]] = relationship(
+        back_populates="document", cascade="all, delete-orphan", passive_deletes=True,
+        order_by="StudyDocumentChunk.position")
+
+
+class StudyDocumentChunk(Base):
+    """One passage of a study document with its page (PDF) or section heading (DOCX)."""
+
+    __tablename__ = "study_document_chunks"
+    __table_args__ = (UniqueConstraint("document_id", "position", name="uq_study_document_chunks_position"),)
+
+    chunk_id: Mapped[int] = mapped_column(primary_key=True)
+    document_id: Mapped[int] = mapped_column(ForeignKey("study_documents.document_id", ondelete="CASCADE"),
+                                             nullable=False, index=True)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    page: Mapped[int | None] = mapped_column(Integer)
+    section: Mapped[str | None] = mapped_column(String(255))
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+
+    document: Mapped[StudyDocument] = relationship(back_populates="chunks")

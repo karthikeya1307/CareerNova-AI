@@ -27,6 +27,8 @@ class CreateSessionRequest(BaseModel):
     mode: Literal["practice", "mock"] = "practice"
     mix: QuestionMix = Field(default_factory=QuestionMix)
     difficulty: Literal["mixed", "easy", "medium", "hard"] = "mixed"
+    # Career-track slug (e.g. "java-developer"): technical questions focus on that role's skills.
+    target_role: str | None = Field(default=None, max_length=60, pattern=r"^[a-z0-9-]+$")
     time_limit_seconds: int | None = Field(default=None, ge=30, le=900)
     use_llm: bool = False
     llm_consent: bool = False

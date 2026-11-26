@@ -6,7 +6,7 @@ ISO 8601 ending in ``Z`` (same convention as Phase 7).
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Literal, Annotated, Any
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
@@ -24,6 +24,9 @@ class StrictModel(BaseModel):
 class ConversationCreate(StrictModel):
     resume_id: int | None = Field(default=None, ge=1)
     title: Title | None = None
+    # Which assistant the chat belongs to: the Application Assistant (how to use CareerNova and your
+    # data in it) or the Interview Preparation Assistant (roles, questions, roadmap, study documents).
+    assistant: Literal["application", "interview"] = "application"
 
 
 class ConversationUpdate(StrictModel):
@@ -65,6 +68,10 @@ class ConversationOut(BaseModel):
     last_message_at: UTCDateTime | None
     created_at: UTCDateTime
     updated_at: UTCDateTime
+    assistant: str = "application"            # application | interview
+    study_document_id: int | None = None     # first attached study document (kept for compatibility)
+    study_document_ids: list[int] = []       # every study document this chat answers from
+    target_role: str | None = None           # role selected in the preparation agent (career-track slug)
     messages: list[MessageOut] | None = None
 
 
@@ -86,3 +93,8 @@ class CapabilitiesOut(BaseModel):
     llm: dict[str, Any]
     limits: dict[str, int]
     notes: list[str]
+
+
+class StudyDocumentAttach(BaseModel):
+    document_id: int | None = None           # null detaches the document(s)
+    document_ids: list[int] | None = Field(default=None, max_length=5)   # several documents at once

@@ -15,6 +15,9 @@ SOURCE_TYPES = (
     "resume", "resume_fact", "internship", "match_result", "skill_gap_recommendation", "learning_plan",
     "document", "interview_session", "interview_progress", "question_bank", "application",
     "application_interview", "application_reminder", "dashboard", "bookmark",
+    "product_doc",                       # a chunk of the product guide (backend/data/product_docs)
+    "career_track",                      # a curated role track (backend/data/career_tracks.json)
+    "study_document",                    # a passage of a document the student uploaded for Q&A
 )
 
 

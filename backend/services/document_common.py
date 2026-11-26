@@ -51,13 +51,17 @@ def internship_context(internship: Internship) -> dict[str, Any]:
         "domain": internship.domain,
         "required_skills": required,
         "preferred_skills": preferred,
-        "description": (internship.description or "")[:1500],
+        "description": (internship.description or "")[:1500],      # the role's responsibilities
+        "eligibility": (internship.eligibility or "")[:1000],      # stated requirements, if any
+        "min_education": internship.min_education,
+        "location": internship.location,
+        "work_mode": internship.work_mode,
     }
 
 
 def context_texts(internship: Internship) -> list[str]:
     return [internship.title or "", internship.company or "", internship.domain or "",
-            internship.description or ""]
+            internship.description or "", internship.eligibility or "", internship.min_education or ""]
 
 
 def oxford_join(items: list[str]) -> str:

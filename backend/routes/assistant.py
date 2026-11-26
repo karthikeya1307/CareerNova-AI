@@ -24,22 +24,29 @@ from backend.schemas.assistant_schema import (
     ExchangeOut,
     MessageCreate,
     MessageOut,
+    StudyDocumentAttach,
 )
 from backend.services.assistant import rate_limit, service
 from backend.services.assistant.intents import EXAMPLES
-from backend.services.llm.base import get_llm_provider, llm_status
+from backend.services.llm.base import DESTINATIONS, get_llm_provider, llm_status
 from backend.utils.dependencies import get_current_user
 
 router = APIRouter(prefix="/assistant", tags=["Career Assistant"])
 logger = logging.getLogger(__name__)
 
 AI_DISCLOSURE = (
-    "With AI rewording, only the facts in the assistant's answer (internship details, your skills and resume "
-    "facts, scores, statuses, dates and counts) and the type of question are sent to an external "
-    "language-model provider ({provider}). Never sent: the text of your question, your chat history, your name, "
+    "For answers about your own data: with AI rewording, only the facts in the assistant's answer (internship details, your skills and resume "
+    "facts, scores, statuses, dates and counts) and the type of question are sent to "
+    "{destination} ({provider}). Never sent: the text of your question, your chat history, your name, "
     "e-mail, phone, links, address or PIN code, notes, contact persons, reminder titles or descriptions, document "
     "titles, or the company and job titles you typed for external applications. Every AI sentence is checked "
-    "against those facts; if it cannot be verified, the standard answer is shown instead."
+    "against those facts; if it cannot be verified, the standard answer is shown instead. "
+    "For questions about how CareerNova AI works: your question, up to three earlier product questions "
+    "and answers from this conversation, and the matching product-guide excerpts are sent, after your name, "
+    "e-mail, phone, links and address are removed (if any remain, nothing is sent). The AI answer must be "
+    "supported by the product guide; otherwise the guide's own sentences are shown. "
+    "For questions about a study document you attached: your question and up to 8 relevant passages of that "
+    "document are sent; the answer must cite them, otherwise the passages quoted from the document are shown."
 )
 
 RECENT_MESSAGES = 50
@@ -61,7 +68,11 @@ def conversation_out(conversation: Conversation, messages: list[MessageOut] | No
     return ConversationOut(
         conversation_id=conversation.conversation_id, title=conversation.title, resume_id=conversation.resume_id,
         message_count=conversation.message_count or 0, last_message_at=conversation.last_message_at,
-        created_at=conversation.created_at, updated_at=conversation.updated_at, messages=messages)
+        created_at=conversation.created_at, updated_at=conversation.updated_at, messages=messages,
+        assistant=service.assistant_of(conversation),
+        study_document_id=(service.attached_ids(conversation) or [None])[0],
+        study_document_ids=service.attached_ids(conversation),
+        target_role=(conversation.context or {}).get("target_role"))
 
 
 def messages_out(db: Session, user_id: int, messages: list[Message]) -> list[MessageOut]:
@@ -71,14 +82,18 @@ def messages_out(db: Session, user_id: int, messages: list[Message]) -> list[Mes
 
 @router.get("/capabilities", response_model=CapabilitiesOut)
 def capabilities(current_user: User = Depends(get_current_user)):
+    llm = llm_status()
     return CapabilitiesOut(
         intents=EXAMPLES,
-        llm={**llm_status(), "assistant_disclosure": (AI_DISCLOSURE.format(provider=llm_status()["provider"])
-                                                     if llm_status()["available"] else None)},
+        llm={**llm, "assistant_disclosure": (AI_DISCLOSURE.format(provider=llm["provider"],
+                                                                destination=DESTINATIONS[llm["location"]])
+                                             if llm["available"] else None)},
         limits={"message_chars": MAX_MESSAGE_CHARS, "messages_per_minute": rate_limit.LIMITS["minute"],
                 "messages_per_day": rate_limit.LIMITS["day"], "ai_answers_per_hour": rate_limit.LIMITS["llm_hour"],
                 "conversations": service.MAX_CONVERSATIONS, "messages_per_conversation": service.MAX_MESSAGES},
         notes=["Answers use only your own data and the internship knowledge base, with sources.",
+               "Questions about how CareerNova AI works are answered from the product guide, with the "
+               "guide sections cited; other topics are politely declined.",
                "The assistant never changes your data; suggested actions need your confirmation.",
                "AI rewording is off unless you turn it on for a message and consent; your name, contact "
                "details, address and PIN code are removed first, and unverifiable AI answers are discarded."])
@@ -88,7 +103,8 @@ def capabilities(current_user: User = Depends(get_current_user)):
 def create_conversation(request: ConversationCreate, db: Session = Depends(get_db),
                         current_user: User = Depends(get_current_user)):
     try:
-        conversation = service.create_conversation(db, current_user.user_id, request.resume_id, request.title)
+        conversation = service.create_conversation(db, current_user.user_id, request.resume_id, request.title,
+                                                   request.assistant)
     except service.AssistantError as exc:
         raise fail(exc)
     return conversation_out(conversation, [])
@@ -96,8 +112,9 @@ def create_conversation(request: ConversationCreate, db: Session = Depends(get_d
 
 @router.get("/conversations", response_model=ConversationList)
 def list_conversations(skip: int = Query(default=0, ge=0), limit: int = Query(default=20, ge=1, le=100),
+                       assistant: str | None = Query(default=None, pattern="^(application|interview)$"),
                        db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    total, items = service.list_conversations(db, current_user.user_id, skip, limit)
+    total, items = service.list_conversations(db, current_user.user_id, skip, limit, assistant)
     return ConversationList(total=total, skip=skip, limit=limit, items=[conversation_out(c) for c in items])
 
 
@@ -118,6 +135,19 @@ def update_conversation(conversation_id: int, request: ConversationUpdate, db: S
     try:
         conversation = service.update_conversation(db, current_user.user_id, conversation_id,
                                                    request.model_dump(), request.model_fields_set)
+    except service.AssistantError as exc:
+        raise fail(exc)
+    return conversation_out(conversation)
+
+
+@router.put("/conversations/{conversation_id}/study-document", response_model=ConversationOut)
+def attach_study_document(conversation_id: int, request: StudyDocumentAttach, db: Session = Depends(get_db),
+                          current_user: User = Depends(get_current_user)):
+    """Answer this conversation's questions from one of my study documents (null detaches it)."""
+    try:
+        ids = request.document_ids if request.document_ids is not None else (
+            [request.document_id] if request.document_id is not None else [])
+        conversation = service.attach_study_documents(db, current_user.user_id, conversation_id, ids)
     except service.AssistantError as exc:
         raise fail(exc)
     return conversation_out(conversation)

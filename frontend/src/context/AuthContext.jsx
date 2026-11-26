@@ -81,15 +81,28 @@ export function AuthProvider({ children, initialUser = null, restoreSession = tr
     setStatus((current) => (current === "unavailable" ? "loading" : current));
   }, []);
 
-  // Called by the F1 login screen with the /auth/login response.
-  const startSession = useCallback(async (tokens, remember = false) => {
-    setAccessToken(tokens.access_token);
-    saveRefreshToken(tokens.refresh_token, remember);
-    const me = await getMe();
-    setUser(me);
-    setStatus("authenticated");
-    return me;
-  }, []);
+  // Called by the login screen with the /auth/login response.
+  const startSession = useCallback(
+    async (tokens, remember = false) => {
+      setAccessToken(tokens.access_token);
+      saveRefreshToken(tokens.refresh_token, remember);
+      let me;
+      try {
+        me = await getMe();
+      } catch (error) {
+        // Never keep tokens for a session the UI could not start: revoke it (best effort) and clear.
+        // A 401 from /auth/me may already have rotated the refresh token, so revoke the newest one.
+        logoutSession(getRefreshToken() || tokens.refresh_token).catch(() => {});
+        clearSession();
+        throw error;
+      }
+      setUser(me);
+      setSessionError(null);
+      setStatus("authenticated");
+      return me;
+    },
+    [clearSession],
+  );
 
   const logout = useCallback(async () => {
     const refreshToken = getRefreshToken();
@@ -108,7 +121,9 @@ export function AuthProvider({ children, initialUser = null, restoreSession = tr
       status,
       sessionError,
       isAuthenticated: status === "authenticated",
-      isAdmin: user?.role === "admin",
+      // The super admin can do everything an admin can (backend/utils/roles.ADMIN_ROLES).
+      isAdmin: user?.role === "admin" || user?.role === "super_admin",
+      isSuperAdmin: user?.role === "super_admin",
       startSession,
       logout,
       retrySession,

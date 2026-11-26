@@ -192,10 +192,16 @@ def create_interview_session(
     internship = available_internship(db, request.internship_id)
     provider = llm_provider(request.use_llm, request.llm_consent)
     candidate = facts_or_422(db, resume)
+    role = None
+    if request.target_role:
+        from backend.services import career_tracks
+        role = career_tracks.get_track(request.target_role)
+        if role is None:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Unknown target role")
 
     session, _ = create_session(
         db, current_user.user_id, resume, internship, candidate, request.mode,
-        request.mix.model_dump(), request.difficulty, request.time_limit_seconds, provider,
+        request.mix.model_dump(), request.difficulty, request.time_limit_seconds, provider, role,
     )
     return session_out(owned_session(db, session.session_id, current_user))
 

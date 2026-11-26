@@ -277,6 +277,80 @@ def test_docx_is_ats_parsable(candidate):
     assert data["education"] and data["projects"] and data["work_experience"]
 
 
+def test_cover_letter_quotes_the_selected_internships_responsibilities(candidate):
+    internship = make_internship()
+    internship.description = "Design Python services for the payments team. Join weekly design reviews."
+    content, _ = generate_cover_letter(candidate, internship, CoverLetterOptions(), [], None)
+    role = next(p for p in content["paragraphs"] if p["key"] == "role")
+    # Only the first sentence, attributed to the posting (never presented as the candidate's experience).
+    assert role["text"] == "Your posting says the role requires the following: “Design Python services for the payments team.”"
+    assert role["fact_ids"] == ["internship"]
+    assert [p["key"] for p in content["paragraphs"]][:3] == ["greeting", "opening", "role"]
+
+
+def test_cover_letter_never_quotes_responsibilities_naming_missing_skills(candidate):
+    internship = make_internship()      # "Build REST APIs and data pipelines." names REST API, not on the resume
+    content, _ = generate_cover_letter(candidate, internship, CoverLetterOptions(), [], None)
+    assert "role" not in {p["key"] for p in content["paragraphs"]}
+    assert skill_mentions(render_text(content)) <= set(candidate.skills)
+
+
+def test_cover_letter_is_specific_to_the_selected_internship(candidate):
+    backend = make_internship()
+    data = make_internship(required=("Python", "Pandas"), preferred=("Git",))
+    data.internship_id, data.title, data.company, data.domain = 2, "Data Analyst Intern", "Orbit Labs", "Data Science"
+    data.description = "Analyze product usage data and build dashboards."
+    first = render_text(generate_cover_letter(candidate, backend, CoverLetterOptions(), [], None)[0])
+    second = render_text(generate_cover_letter(candidate, data, CoverLetterOptions(), [], None)[0])
+    assert "Backend Developer Intern position at Nimbus Analytics" in first and "Orbit Labs" not in first
+    assert "Data Analyst Intern position at Orbit Labs" in second and "Nimbus" not in second
+    assert "Analyze product usage data and build dashboards" in second
+    assert "Orbit Labs' work in Data Science" in second
+
+
+def test_cover_letter_education_requirement_only_when_the_degree_matches(candidate):
+    internship = make_internship()
+    internship.min_education = "Pursuing B.Tech/B.E. (CS/IT preferred)"
+    content, _ = generate_cover_letter(candidate, internship, CoverLetterOptions(), [], None)
+    role = next(p for p in content["paragraphs"] if p["key"] == "role")
+    assert "My B.Tech IT studies match the education it asks for (Pursuing B.Tech/B.E. (CS/IT preferred))." in role["text"]
+    assert "edu-1" in role["fact_ids"]
+
+    internship.min_education = "Pursuing M.Tech/M.E."          # the candidate is a B.Tech student
+    content, _ = generate_cover_letter(candidate, internship, CoverLetterOptions(), [], None)
+    text = render_text(content)
+    assert "education it asks for" not in text and "M.Tech" not in text
+
+
+def test_degree_codes_need_real_abbreviations():
+    from backend.services.cover_letter import degree_codes
+
+    assert degree_codes("Pursuing B.Tech/B.E. (CS/IT preferred)") == {"btech", "be"}
+    assert degree_codes("Pursuing M.Tech/M.E.") == {"mtech", "me"}
+    assert degree_codes("Students who will be graduating soon") == set()     # the word "be" is not B.E.
+
+
+def test_cover_letter_without_description_or_requirement_has_no_role_paragraph(candidate):
+    internship = make_internship()
+    internship.description = None
+    internship.min_education = None
+    content, _ = generate_cover_letter(candidate, internship, CoverLetterOptions(), [], None)
+    assert "role" not in {p["key"] for p in content["paragraphs"]}
+
+
+def test_cover_letter_ai_request_includes_responsibilities_and_requirements(candidate):
+    internship = make_internship()
+    internship.eligibility = "Available for 12 weeks."
+    internship.min_education = "Pursuing B.Tech/B.E."
+    provider = FakeLLM({"paragraphs": []})
+    generate_cover_letter(candidate, internship, CoverLetterOptions(), [], provider)
+    sent = provider.calls[0]["payload"]["internship"]
+    assert sent["title"] == "Backend Developer Intern" and sent["company"] == "Nimbus Analytics"
+    assert sorted(sent["required_skills"]) == ["Docker", "Python", "SQL"] and sent["preferred_skills"] == ["Django"]
+    assert sent["description"] == "Build REST APIs and data pipelines."
+    assert sent["eligibility"] == "Available for 12 weeks." and sent["min_education"] == "Pursuing B.Tech/B.E."
+
+
 def test_cover_letter_renders(candidate):
     content, _ = generate_cover_letter(candidate, make_internship(), CoverLetterOptions(), [], None)
     text = render_text(content)

@@ -16,12 +16,15 @@ from backend.routes.matches import router as matches_router
 from backend.routes.skill_gaps import router as skill_gaps_router
 from backend.routes.profiles import router as profiles_router
 from backend.routes.resumes import router as resumes_router
+from backend.routes.career_tracks import router as career_tracks_router
+from backend.routes.prep import router as prep_router
+from backend.routes.study_documents import router as study_documents_router
 
 
 # Create FastAPI application
 app = FastAPI(
-    title="AI Career Companion API",
-    description="User Management and Resume Parsing APIs",
+    title="CareerNova AI API",
+    description="CareerNova AI — Your Skills. Your Potential. Your Career. Accounts, resumes, matching, skill gaps, documents, interviews, applications and the career assistant.",
     version="1.0.0"
 )
 
@@ -65,12 +68,15 @@ app.include_router(interviews_router)
 app.include_router(applications_router)
 app.include_router(assistant_router)
 app.include_router(admin_router)
+app.include_router(career_tracks_router)
+app.include_router(prep_router)
+app.include_router(study_documents_router)
 
 # Root API
 @app.get("/")
 def home():
     return {
-        "message": "Welcome to AI Career Companion API",
+        "message": "Welcome to CareerNova AI API",
         "status": "Running"
     }
 

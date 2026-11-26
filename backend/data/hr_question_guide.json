@@ -1,0 +1,246 @@
+{
+  "version": "hr-guide-v1",
+  "note": "Curated HR interview questions with answer guidance (what the interviewer expects, points to cover, structure, mistakes). General guidance, not company-specific. Personal details are only ever taken from the candidate's own resume.",
+  "questions": [
+    {
+      "id": "hr-about",
+      "theme": "about_yourself",
+      "question": "Tell me about yourself.",
+      "expects": "A short, relevant professional introduction that connects your background to this role - not your life story.",
+      "points": [
+        "Your current studies or role",
+        "Two or three skills most relevant to the role",
+        "One project or experience that shows those skills",
+        "Why you are interested in this role now"
+      ],
+      "structure": [
+        "Present: who you are and what you study or do",
+        "Past: the project or experience that best shows your skills",
+        "Future: what you want to do next and why this role fits"
+      ],
+      "mistakes": [
+        "Reciting your whole resume line by line",
+        "Personal details unrelated to the job",
+        "Speaking for more than about two minutes",
+        "Claiming skills you cannot discuss in depth"
+      ]
+    },
+    {
+      "id": "hr-strengths-weaknesses",
+      "theme": "strengths",
+      "question": "What are your strengths and weaknesses?",
+      "expects": "Self-awareness: real strengths backed by evidence, and a genuine weakness you are actively improving.",
+      "points": [
+        "One or two strengths with a concrete example each",
+        "A real, non-critical weakness",
+        "What you are doing to improve it and the progress so far"
+      ],
+      "structure": [
+        "Strength + evidence from a project or course",
+        "Weakness stated plainly",
+        "Concrete improvement steps and a result"
+      ],
+      "mistakes": [
+        "Disguised strengths such as 'I work too hard'",
+        "A weakness that is a core requirement of the role",
+        "Strengths with no evidence"
+      ]
+    },
+    {
+      "id": "hr-goals",
+      "theme": "career_goals",
+      "question": "Where do you see yourself in the next few years?",
+      "expects": "Direction and commitment: goals that are realistic and connected to the role and the company.",
+      "points": [
+        "The skills you want to deepen",
+        "The kind of responsibility you want to grow into",
+        "How this role is a step towards that"
+      ],
+      "structure": [
+        "Short-term: what you want to learn in this role",
+        "Medium-term: the contribution you want to make",
+        "Link back to the role"
+      ],
+      "mistakes": [
+        "Saying you plan to leave soon for something unrelated",
+        "Vague answers such as 'somewhere good'",
+        "Goals that ignore the role you applied for"
+      ]
+    },
+    {
+      "id": "hr-why-hire",
+      "theme": "why_hire",
+      "question": "Why should we hire you?",
+      "expects": "A clear match between the role's needs and your evidence-backed skills.",
+      "points": [
+        "The two or three requirements of the role you meet best",
+        "Evidence for each from your projects or experience",
+        "What you would contribute or learn quickly"
+      ],
+      "structure": [
+        "Restate what the role needs",
+        "Match each need with your evidence",
+        "Close with your motivation and readiness to learn"
+      ],
+      "mistakes": [
+        "Comparing yourself with other candidates",
+        "Generic claims with no evidence",
+        "Overstating experience"
+      ]
+    },
+    {
+      "id": "hr-why-role",
+      "theme": "why_role",
+      "question": "Why are you interested in this role?",
+      "expects": "Genuine, informed motivation for this kind of work.",
+      "points": [
+        "What attracts you to the work itself",
+        "Related projects or courses you enjoyed",
+        "What you hope to learn"
+      ],
+      "structure": [
+        "The work that interests you",
+        "Evidence you have already explored it",
+        "What you want to learn next"
+      ],
+      "mistakes": [
+        "Talking only about salary or perks",
+        "Not knowing what the role involves",
+        "A generic answer that fits any job"
+      ]
+    },
+    {
+      "id": "hr-teamwork",
+      "theme": "teamwork",
+      "question": "Tell me about a time you worked in a team. What was your role?",
+      "expects": "Collaboration and communication, with your own contribution made clear.",
+      "points": [
+        "The team goal",
+        "Your specific responsibility",
+        "How you communicated and handled disagreements",
+        "The outcome"
+      ],
+      "structure": [
+        "Situation",
+        "Task (your part)",
+        "Action (what you did and how you coordinated)",
+        "Result (and what you learned)"
+      ],
+      "mistakes": [
+        "Only saying 'we' so your contribution is unclear",
+        "Blaming teammates",
+        "No outcome"
+      ]
+    },
+    {
+      "id": "hr-project",
+      "theme": "project",
+      "question": "Walk me through a project you are proud of.",
+      "expects": "Depth: you understand the problem, your decisions and their trade-offs, and the result.",
+      "points": [
+        "The problem and who it was for",
+        "Your design and technology choices and why",
+        "A difficulty you solved",
+        "The result and what you would improve"
+      ],
+      "structure": [
+        "Problem",
+        "Approach and stack",
+        "Challenge and how you solved it",
+        "Result and next improvement"
+      ],
+      "mistakes": [
+        "Listing technologies without explaining decisions",
+        "Taking credit for others' work",
+        "Being unable to answer follow-up questions about your own code"
+      ]
+    },
+    {
+      "id": "hr-problem-solving",
+      "theme": "problem_solving",
+      "question": "Tell me about a difficult problem you solved. How did you approach it?",
+      "expects": "A structured way of thinking: how you understood the problem, explored options and checked the result.",
+      "points": [
+        "What made the problem hard",
+        "How you broke it down or researched it",
+        "The options you considered and why you chose one",
+        "How you verified the result and what you learned"
+      ],
+      "structure": [
+        "Situation and why it was difficult",
+        "Your approach step by step",
+        "The decision and its trade-offs",
+        "Result and lesson"
+      ],
+      "mistakes": [
+        "Choosing a trivial problem",
+        "Skipping how you reached the solution",
+        "Taking credit for a team's work without saying so"
+      ]
+    },
+    {
+      "id": "hr-situational-deadline",
+      "theme": "situational",
+      "question": "What would you do if you realised you could not finish a task by its deadline?",
+      "expects": "Ownership, early communication and sensible prioritisation.",
+      "points": [
+        "Tell the right person early",
+        "Explain the reason and what is already done",
+        "Offer options: reduced scope, more time, help",
+        "Prevent it next time"
+      ],
+      "structure": [
+        "Recognise the risk early",
+        "Communicate with options",
+        "Agree a plan and deliver",
+        "Reflect on prevention"
+      ],
+      "mistakes": [
+        "Hiding the problem until the deadline",
+        "Delivering low-quality work silently",
+        "Blaming others"
+      ]
+    },
+    {
+      "id": "hr-situational-learning",
+      "theme": "situational",
+      "question": "How would you handle being asked to use a technology you have never used?",
+      "expects": "A structured, independent approach to learning and asking for help at the right time.",
+      "points": [
+        "Start with official documentation and a small prototype",
+        "Time-box learning and ask for help when stuck",
+        "Example of learning something quickly before"
+      ],
+      "structure": [
+        "Plan how you would learn",
+        "Show a past example",
+        "Explain how you would confirm your work is right"
+      ],
+      "mistakes": [
+        "Saying you would refuse or wait for training",
+        "Claiming you would never need help"
+      ]
+    },
+    {
+      "id": "hr-communication",
+      "theme": "communication",
+      "question": "How would you explain a technical concept to someone without a technical background?",
+      "expects": "Clear communication: choosing the right level of detail for the audience.",
+      "points": [
+        "Find out what the listener already knows",
+        "Use an analogy or example",
+        "Check understanding and invite questions"
+      ],
+      "structure": [
+        "Pick a concept from your work",
+        "Show the simple explanation",
+        "Explain how you would check they understood"
+      ],
+      "mistakes": [
+        "Using jargon",
+        "Talking down to the listener",
+        "Not checking understanding"
+      ]
+    }
+  ]
+}

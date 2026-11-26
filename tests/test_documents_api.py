@@ -313,3 +313,44 @@ def test_documents_do_not_change_matching_or_skill_gaps(client, student, seeded)
     after = client.get(f"/skill-gaps?resume_id={rid}", headers=h).json()
     assert [(r["skill"], r["priority_score"], r["status"]) for r in after] == [
         (r["skill"], r["priority_score"], r["status"]) for r in gaps["recommendations"]]
+
+
+# ------------------------------------------------------------------
+# Assignment 1: cover letter for the selected internship, end to end (test database only)
+# ------------------------------------------------------------------
+
+def test_cover_letter_end_to_end_uses_the_selected_internship_and_never_invents_skills(client, student, seeded):
+    first, second = seeded.scalars(select(Internship).order_by(Internship.internship_id).limit(2)).all()
+    first.description = "Build Python services with FastAPI and PostgreSQL for the payments team. Join stand-ups."
+    first.min_education = "B.Tech or B.E. in Computer Science or IT"
+    second.description = "Operate Kubernetes clusters and Terraform pipelines for the platform team."
+    second.min_education = "MBA"
+    seeded.commit()
+    resume_skills = {"Python", "FastAPI", "PostgreSQL", "Docker", "Git", "SQL", "REST API"}
+
+    # What the internship picker shows: responsibilities, required skills and education requirement.
+    details = client.get(f"/internships/{first.internship_id}", headers=student["headers"]).json()
+    assert details["description"].startswith("Build Python services")
+    assert details["min_education"].startswith("B.Tech") and details["required_skills"]
+
+    letters = {}
+    for internship in (first, second):
+        response = client.post("/documents/cover-letter", headers=student["headers"],
+                               json={"resume_id": student["resume_id"], "internship_id": internship.internship_id})
+        assert response.status_code == 201, response.text
+        letters[internship.internship_id] = response.json()["content"]
+
+    one, two = letters[first.internship_id], letters[second.internship_id]
+    assert first.company in one and first.title in one and second.company not in one
+    assert second.company in two and second.title in two and first.company not in two
+    # Responsibilities are quoted from the posting, attributed to it, only when the student has the skills.
+    assert "Your posting says the role requires the following: “Build Python services with FastAPI and " \
+           "PostgreSQL for the payments team.”" in one
+    assert "Kubernetes" not in two and "Terraform" not in two and "Your posting says" not in two
+    # The education requirement is mentioned only when the student's degree matches it.
+    assert "match the education it asks for (B.Tech or B.E. in Computer Science or IT)" in one
+    assert "MBA" not in two
+    # No qualification outside the resume: every skill named in either letter is on the resume.
+    for letter in (one, two):
+        assert skill_mentions(letter) <= resume_skills, skill_mentions(letter) - resume_skills
+        assert letter.rstrip().endswith("Asha Rao")

@@ -15,7 +15,7 @@ from backend.database import get_db
 from backend.models import User, AuthSession
 
 from backend.utils.security import SECRET_KEY, ALGORITHM
-from backend.utils.roles import ROLE_ADMIN, VALID_ROLES
+from backend.utils.roles import ADMIN_ROLES, ROLE_ADMIN, ROLE_SUPER_ADMIN, VALID_ROLES
 
 
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -100,6 +100,14 @@ def get_current_user(
             detail="User not found"
         )
 
+    # Deactivated accounts are refused on every request, including
+    # access tokens issued before the account was deactivated.
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This account has been deactivated"
+        )
+
     # Login already requires verification; this also protects
     # tokens issued before an account became unverified.
     if not user.is_verified:
@@ -136,5 +144,6 @@ def require_roles(*allowed_roles: str):
     return role_checker
 
 
-# Convenience dependency for admin-only endpoints.
-require_admin = require_roles(ROLE_ADMIN)
+# Convenience dependencies. The super admin can do everything an admin can.
+require_admin = require_roles(*sorted(ADMIN_ROLES))
+require_super_admin = require_roles(ROLE_SUPER_ADMIN)

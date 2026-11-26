@@ -214,9 +214,14 @@ def test_soft_delete_hides_from_students_but_not_admins(client, admin, student, 
 # Search and index endpoints
 # ------------------------------------------------------------------
 
-def test_search_without_index_returns_503(client, student, seeded):
+def test_search_without_index_falls_back_to_keywords(client, student, seeded):
+    # The meaning-based index is not built: search still works on keywords instead of failing (was a 503).
     response = client.get("/internships/search?q=python", headers=student["headers"])
-    assert response.status_code == 503
+    assert response.status_code == 200
+    body = response.json()
+    assert body["mode"] == "keyword" and body["index_built_at"] is None
+    assert "keywords only" in body["message"] and "manage" not in body["message"]   # no server internals
+    assert body["results"] and all("Python" in r["reasons"][0] for r in body["results"])
 
 
 def test_admin_rebuild_status_and_search(client, admin, student, seeded, monkeypatch, test_embedder):

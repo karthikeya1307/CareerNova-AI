@@ -43,6 +43,9 @@ class GenerationRequest:
     difficulty: str = "mixed"               # mixed | easy | medium | hard
     seed: int = 0
     exclude_behavioral: frozenset[str] = frozenset()
+    # Target role (career track): (core skills, advanced skills). Technical questions use the role's
+    # skills the candidate has first, then the role's missing core skills, then other resume skills.
+    role_skills: tuple[tuple[str, ...], tuple[str, ...]] | None = None
 
 
 def _title_keywords(title: str) -> list[str]:
@@ -55,7 +58,8 @@ def _title_keywords(title: str) -> list[str]:
 # Technical
 # ------------------------------------------------------------------
 
-def _technical_skill_order(candidate: CandidateFacts, internship: Internship | None) -> list[tuple[str, str]]:
+def _technical_skill_order(candidate: CandidateFacts, internship: Internship | None,
+                           role_skills: tuple[tuple[str, ...], tuple[str, ...]] | None = None) -> list[tuple[str, str]]:
     """(skill, status) where status is have | required_missing | preferred_missing."""
     have = {s.casefold() for s in candidate.skills}
     ordered: list[tuple[str, str]] = []
@@ -76,6 +80,17 @@ def _technical_skill_order(candidate: CandidateFacts, internship: Internship | N
         for skill in preferred:
             if skill.casefold() in have:
                 add(skill, "have")
+    if role_skills is not None:
+        core, advanced = role_skills
+        for skill in list(core) + list(advanced):
+            if skill.casefold() in have:
+                add(skill, "have")
+        for skill in core:
+            add(skill, "have" if skill.casefold() in have else "required_missing")
+        for skill in advanced:
+            add(skill, "have" if skill.casefold() in have else "preferred_missing")
+        if len(ordered) >= 3:
+            return ordered          # a role-focused interview never drifts to unrelated resume skills
     for skill in candidate.skills:
         add(skill, "have")
     return ordered
@@ -86,9 +101,10 @@ def _pick_difficulty(index: int, difficulty: str) -> str:
 
 
 def technical_questions(
-    candidate: CandidateFacts, internship: Internship | None, count: int, difficulty: str, rng: random.Random
+    candidate: CandidateFacts, internship: Internship | None, count: int, difficulty: str, rng: random.Random,
+    role_skills: tuple[tuple[str, ...], tuple[str, ...]] | None = None,
 ) -> list[dict[str, Any]]:
-    skills = _technical_skill_order(candidate, internship)
+    skills = _technical_skill_order(candidate, internship, role_skills)
     result: list[dict[str, Any]] = []
     used: set[str] = set()
     rounds = 0
@@ -325,7 +341,7 @@ def generate_questions(
 
     rng = random.Random(request.seed)
     questions = (
-        technical_questions(candidate, internship, mix["technical"], request.difficulty, rng)
+        technical_questions(candidate, internship, mix["technical"], request.difficulty, rng, request.role_skills)
         + project_questions(candidate, internship, mix["project"])
         + internship_questions(candidate, internship, mix["internship"])
         + behavioral_questions(candidate, mix["behavioral"], rng, request.exclude_behavioral)

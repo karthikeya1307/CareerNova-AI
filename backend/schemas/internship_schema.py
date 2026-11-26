@@ -70,6 +70,12 @@ class InternshipResponse(BaseModel):
     required_skills: list[str] = Field(default_factory=list)
     preferred_skills: list[str] = Field(default_factory=list)
     skills: list[InternshipSkillItem] = Field(default_factory=list)
+    # Job-source tracking (P3, additive). None = unknown.
+    source_url: str | None = None
+    posted_at: datetime | None = None
+    last_verified_at: datetime | None = None
+    source_label: str | None = None        # e.g. "Sample listing (curated dataset)"
+    freshness: str | None = None           # verified | stale | unverified | expired
 
 
 class InternshipListResponse(BaseModel):
@@ -86,13 +92,28 @@ class InternshipFiltersResponse(BaseModel):
 
 
 class InternshipSearchHit(BaseModel):
-    similarity: float
+    similarity: float                     # cosine similarity of the text (0 when only keywords were used)
+    score: float = 0.0                    # relevance: exact skill/role/keyword match combined with similarity
+    reasons: list[str] = []               # why this posting matched the query
     internship: InternshipResponse
+
+
+class SearchInterpretation(BaseModel):
+    skills: list[str] = []
+    roles: list[str] = []
+    keywords: list[str] = []
+    location: str | None = None
+    work_mode: str | None = None
+    opportunity: str = "internship"
+    experience_level: str | None = None
 
 
 class InternshipSearchResponse(BaseModel):
     query: str
     index_built_at: str | None
+    mode: str = "hybrid"                  # "hybrid" (meaning + exact) or "keyword" (index unavailable)
+    interpretation: SearchInterpretation | None = None
+    message: str | None = None            # explains empty results or the internships-only catalogue
     results: list[InternshipSearchHit]
 
 
@@ -138,6 +159,8 @@ class InternshipCreate(BaseModel):
     min_education: str | None = Field(default=None, max_length=200)
     required_skills: list[str] = Field(default_factory=list, max_length=30)
     preferred_skills: list[str] = Field(default_factory=list, max_length=30)
+    source_url: str | None = Field(default=None, max_length=1000)
+    posted_at: datetime | None = None
 
     @field_validator("title", "company")
     @classmethod
@@ -152,7 +175,7 @@ class InternshipCreate(BaseModel):
     def optional_text(cls, value):
         return _clean_optional(value)
 
-    @field_validator("application_url")
+    @field_validator("application_url", "source_url")
     @classmethod
     def url(cls, value):
         return _validate_url(value)
@@ -182,6 +205,8 @@ class InternshipUpdate(BaseModel):
     min_education: str | None = Field(default=None, max_length=200)
     required_skills: list[str] | None = Field(default=None, max_length=30)
     preferred_skills: list[str] | None = Field(default=None, max_length=30)
+    source_url: str | None = Field(default=None, max_length=1000)
+    posted_at: datetime | None = None
     is_active: bool | None = None
 
     @field_validator("title", "company")
@@ -199,7 +224,7 @@ class InternshipUpdate(BaseModel):
     def optional_text(cls, value):
         return _clean_optional(value)
 
-    @field_validator("application_url")
+    @field_validator("application_url", "source_url")
     @classmethod
     def url(cls, value):
         return _validate_url(value)

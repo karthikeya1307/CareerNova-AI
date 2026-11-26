@@ -5,7 +5,7 @@ export default function Input({ label, error, hint, id, className = "", ...props
   const inputId = id || autoId;
   const describedBy = error ? `${inputId}-error` : hint ? `${inputId}-hint` : undefined;
   return (
-    <div className={`flex flex-col gap-1 ${className}`}>
+    <div className={`flex flex-col gap-1.5 ${className}`}>
       {label && (
         <label htmlFor={inputId} className="text-sm font-medium text-slate-700">
           {label}
@@ -15,13 +15,11 @@ export default function Input({ label, error, hint, id, className = "", ...props
         id={inputId}
         aria-invalid={error ? true : undefined}
         aria-describedby={describedBy}
-        className={`rounded-md border px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500 ${
-          error ? "border-red-400" : "border-slate-300"
-        }`}
+        className={`cn-input ${error ? "border-red-400 hover:border-red-400 focus:border-red-500 focus:ring-red-100" : ""}`}
         {...props}
       />
       {error ? (
-        <p id={`${inputId}-error`} className="text-xs text-red-600">
+        <p id={`${inputId}-error`} className="text-xs font-medium text-red-600">
           {error}
         </p>
       ) : (

@@ -56,6 +56,9 @@ media/
 *.pkl
 *.pickle
 backend/data/faiss_index/
+backend/data/faiss_index_*/
+# Raw console output of the RAG evaluation (results are kept in STUDY_RAG_EVAL.md / study_rag_results.json)
+docs/assignment/evaluation/study_rag_eval_console.txt
 .models/
 *.safetensors
 *.bin
@@ -100,3 +103,4 @@ npm-debug.log*
 .DS_Store
 Thumbs.db
 .claude/settings.local.json
+.claude/launch.json

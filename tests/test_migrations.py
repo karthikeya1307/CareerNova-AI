@@ -28,6 +28,11 @@ PHASE_5 = "e7b2d4f6a8c1"
 PHASE_6 = "f3c9e1a5b7d2"
 PHASE_7 = "a9d3f6b2c8e4"
 PHASE_8 = "b2e8c4a7d1f5"
+ACCOUNT_SECURITY = "c6d2a8f4b1e3"
+INVITATIONS = "d8e4b2c6a9f1"
+JOBS_P3 = "e1f3a5c7b9d2"
+STUDY_DOCS = "f2b4d6a8c0e1"
+PROFILE_VERSIONS = "a7c9e1b3d5f6"
 
 
 @pytest.fixture
@@ -55,7 +60,12 @@ def assert_no_drift(config):
 
 def test_single_linear_head(alembic_config):
     script = ScriptDirectory.from_config(alembic_config)
-    assert script.get_heads() == [PHASE_8]
+    assert script.get_heads() == [PROFILE_VERSIONS]
+    assert script.get_revision(PROFILE_VERSIONS).down_revision == STUDY_DOCS
+    assert script.get_revision(STUDY_DOCS).down_revision == JOBS_P3
+    assert script.get_revision(JOBS_P3).down_revision == INVITATIONS
+    assert script.get_revision(INVITATIONS).down_revision == ACCOUNT_SECURITY
+    assert script.get_revision(ACCOUNT_SECURITY).down_revision == PHASE_8
     assert script.get_revision(PHASE_8).down_revision == PHASE_7
     assert script.get_revision(PHASE_7).down_revision == PHASE_6
     assert script.get_revision(PHASE_6).down_revision == PHASE_5
@@ -166,8 +176,38 @@ def test_migrations_round_trip_without_drift(alembic_config):
     command.downgrade(alembic_config, PHASE_7)
     assert "intent" not in columns("messages") and "context" not in columns("conversations")
     assert "assistant_rate_limits" not in inspect(database.engine).get_table_names()
-    command.upgrade(alembic_config, "head")
+    command.upgrade(alembic_config, PHASE_8)
     assert "result_set" in columns("messages")
+    assert "is_active" not in columns("users")
+
+    # Account security: upgrade, downgrade, upgrade again.
+    command.upgrade(alembic_config, ACCOUNT_SECURITY)
+    assert {"is_active", "deactivated_at", "last_login_at"} <= columns("users")
+    assert "uq_users_single_super_admin" in indexes("users")
+    assert {"admin_audit_events", "auth_rate_limits"} <= set(inspect(database.engine).get_table_names())
+    command.downgrade(alembic_config, PHASE_8)
+    assert "is_active" not in columns("users")
+    assert "admin_audit_events" not in inspect(database.engine).get_table_names()
+    command.upgrade(alembic_config, ACCOUNT_SECURITY)
+    assert "is_active" in columns("users")
+    assert "user_invitations" not in inspect(database.engine).get_table_names()
+
+    # Invitations and email log: upgrade, downgrade, upgrade again.
+    command.upgrade(alembic_config, INVITATIONS)
+    assert {"user_invitations", "email_deliveries"} <= set(inspect(database.engine).get_table_names())
+    command.downgrade(alembic_config, ACCOUNT_SECURITY)
+    assert "user_invitations" not in inspect(database.engine).get_table_names()
+    command.upgrade(alembic_config, INVITATIONS)
+    assert "email_deliveries" in inspect(database.engine).get_table_names()
+    assert "skill_progress" not in inspect(database.engine).get_table_names()
+
+    # Skill progress and job-source tracking: upgrade, downgrade, upgrade again.
+    command.upgrade(alembic_config, JOBS_P3)
+    assert "skill_progress" in inspect(database.engine).get_table_names()
+    assert {"source_url", "posted_at", "last_verified_at", "dedup_key"} <= columns("internships")
+    command.downgrade(alembic_config, INVITATIONS)
+    assert "dedup_key" not in columns("internships")
+    command.upgrade(alembic_config, "head")
 
     assert_no_drift(alembic_config)
 
@@ -304,7 +344,7 @@ def test_phase8_downgrade_protects_data_and_keeps_message_text(alembic_config):
     with pytest.raises(RuntimeError, match="Refusing to downgrade Phase 8"):
         command.downgrade(alembic_config, PHASE_7)
     with database.engine.connect() as conn:
-        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == PHASE_8
+        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == PROFILE_VERSIONS  # unchanged head
         assert conn.execute(text("SELECT count(*) FROM messages WHERE intent IS NOT NULL")).scalar() == 2
 
     alembic_config.cmd_opts = argparse.Namespace(x=["phase8_allow_data_loss=true"])
@@ -322,4 +362,221 @@ def test_phase8_downgrade_protects_data_and_keeps_message_text(alembic_config):
     command.upgrade(alembic_config, "head")
     with database.engine.connect() as conn:
         assert conn.execute(text("SELECT message_count FROM conversations")).scalar() == 2
+    assert_no_drift(alembic_config)
+
+
+# ------------------------------------------------------------------
+# Account security (super admin, deactivation, audit log, login throttling)
+# ------------------------------------------------------------------
+
+def at_phase8_with_users(alembic_config, roles):
+    Base.metadata.drop_all(bind=database.engine)
+    Base.metadata.create_all(bind=database.engine)
+    command.stamp(alembic_config, "head")
+    command.downgrade(alembic_config, PHASE_8)
+    with database.engine.begin() as conn:
+        for n, role in enumerate(roles):
+            conn.execute(text("INSERT INTO users (first_name, last_name, email, password_hash, is_verified, role) "
+                              "VALUES ('T', 'U', :e, 'x', true, :r)"), {"e": f"acct{n}@example.com", "r": role})
+
+
+def test_account_security_upgrade_keeps_users_and_makes_them_active(alembic_config):
+    at_phase8_with_users(alembic_config, ["student", "admin", "student"])
+    command.upgrade(alembic_config, ACCOUNT_SECURITY)
+    with database.engine.connect() as conn:
+        rows = conn.execute(text("SELECT email, role, is_verified, is_active, deactivated_at, last_login_at "
+                                 "FROM users ORDER BY user_id")).all()
+    assert [(r.email, r.role, r.is_verified, r.is_active, r.deactivated_at, r.last_login_at) for r in rows] == [
+        ("acct0@example.com", "student", True, True, None, None),
+        ("acct1@example.com", "admin", True, True, None, None),
+        ("acct2@example.com", "student", True, True, None, None)]
+    command.upgrade(alembic_config, "head")
+    assert_no_drift(alembic_config)
+
+
+def test_account_security_upgrade_refuses_unknown_roles(alembic_config):
+    at_phase8_with_users(alembic_config, ["student", "superuser"])
+    with pytest.raises(RuntimeError, match="Refusing to upgrade"):
+        command.upgrade(alembic_config, ACCOUNT_SECURITY)
+    with database.engine.connect() as conn:
+        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == PHASE_8
+        assert conn.execute(text("SELECT count(*) FROM users")).scalar() == 2
+    assert "is_active" not in columns("users")
+
+    # Fix the row, then the upgrade succeeds (and the schema is back at head for later tests).
+    with database.engine.begin() as conn:
+        conn.execute(text("UPDATE users SET role = 'student' WHERE role = 'superuser'"))
+    command.upgrade(alembic_config, "head")
+    assert "is_active" in columns("users")
+
+
+def test_account_security_enforces_one_super_admin_and_known_roles(alembic_config):
+    at_phase8_with_users(alembic_config, ["student"])
+    command.upgrade(alembic_config, ACCOUNT_SECURITY)
+    insert = text("INSERT INTO users (first_name, last_name, email, password_hash, role) "
+                  "VALUES ('S', 'A', :e, 'x', :r)")
+    with database.engine.begin() as conn:
+        conn.execute(insert, {"e": "first-super@example.com", "r": "super_admin"})
+    with pytest.raises(Exception, match="uq_users_single_super_admin"):
+        with database.engine.begin() as conn:
+            conn.execute(insert, {"e": "second-super@example.com", "r": "super_admin"})
+    with pytest.raises(Exception, match="ck_users_role"):
+        with database.engine.begin() as conn:
+            conn.execute(insert, {"e": "odd@example.com", "r": "owner"})
+    command.upgrade(alembic_config, "head")
+
+
+def test_account_security_downgrade_protects_security_state(alembic_config):
+    at_phase8_with_users(alembic_config, ["student", "student"])
+    command.upgrade(alembic_config, ACCOUNT_SECURITY)
+    with database.engine.begin() as conn:
+        conn.execute(text("UPDATE users SET role = 'super_admin' WHERE email = 'acct0@example.com'"))
+        conn.execute(text("UPDATE users SET is_active = false, deactivated_at = now() "
+                          "WHERE email = 'acct1@example.com'"))
+        conn.execute(text("INSERT INTO admin_audit_events (action, details) VALUES ('user.deactivate', NULL)"))
+
+    with pytest.raises(RuntimeError, match="Refusing to downgrade the account-security migration"):
+        command.downgrade(alembic_config, PHASE_8)
+    with database.engine.connect() as conn:
+        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == ACCOUNT_SECURITY
+        assert conn.execute(text("SELECT count(*) FROM admin_audit_events")).scalar() == 1
+        assert conn.execute(text("SELECT is_active FROM users WHERE email = 'acct1@example.com'")).scalar() is False
+
+    alembic_config.cmd_opts = argparse.Namespace(x=["accounts_allow_data_loss=true"])
+    try:
+        command.downgrade(alembic_config, PHASE_8)
+    finally:
+        alembic_config.cmd_opts = None
+    with database.engine.connect() as conn:
+        assert conn.execute(text("SELECT role FROM users ORDER BY user_id")).scalars().all() == ["admin", "student"]
+        assert conn.execute(text("SELECT count(*) FROM users")).scalar() == 2
+    assert "admin_audit_events" not in inspect(database.engine).get_table_names()
+    command.upgrade(alembic_config, "head")
+    assert_no_drift(alembic_config)
+
+
+def test_invitations_downgrade_protects_outstanding_invitations(alembic_config):
+    Base.metadata.drop_all(bind=database.engine)
+    Base.metadata.create_all(bind=database.engine)
+    command.stamp(alembic_config, "head")
+    with database.engine.begin() as conn:
+        conn.execute(text("INSERT INTO users (first_name, last_name, email, password_hash) "
+                          "VALUES ('P', 'U', 'pending@example.com', 'x')"))
+        conn.execute(text("INSERT INTO user_invitations (user_id, token_hash, expires_at) "
+                          "SELECT user_id, repeat('a', 64), now() + interval '1 day' FROM users"))
+        conn.execute(text("INSERT INTO email_deliveries (kind, recipient, status) "
+                          "VALUES ('invitation', 'pending@example.com', 'outboxed')"))
+
+    with pytest.raises(RuntimeError, match="Refusing to downgrade the invitations migration"):
+        command.downgrade(alembic_config, ACCOUNT_SECURITY)
+    with database.engine.connect() as conn:
+        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == PROFILE_VERSIONS   # unchanged
+        assert conn.execute(text("SELECT count(*) FROM user_invitations")).scalar() == 1
+
+    alembic_config.cmd_opts = argparse.Namespace(x=["invitations_allow_data_loss=true"])
+    try:
+        command.downgrade(alembic_config, ACCOUNT_SECURITY)
+    finally:
+        alembic_config.cmd_opts = None
+    with database.engine.connect() as conn:
+        assert conn.execute(text("SELECT count(*) FROM users")).scalar() == 1     # the account itself is kept
+    assert "user_invitations" not in inspect(database.engine).get_table_names()
+    command.upgrade(alembic_config, "head")
+    assert_no_drift(alembic_config)
+
+
+def test_p3_upgrade_backfills_dedup_keys_and_downgrade_protects_progress(alembic_config):
+    from backend.services.job_sources import dedup_key
+
+    Base.metadata.drop_all(bind=database.engine)
+    Base.metadata.create_all(bind=database.engine)
+    command.stamp(alembic_config, "head")
+    command.downgrade(alembic_config, INVITATIONS)
+    with database.engine.begin() as conn:
+        conn.execute(text("INSERT INTO internships (title, company, location, source, is_active, stipend_currency) "
+                          "VALUES ('Data  Analyst Intern', 'Nimbus, Inc.', 'Pune', 'dataset', true, 'INR')"))
+    command.upgrade(alembic_config, JOBS_P3)
+    with database.engine.connect() as conn:
+        row = conn.execute(text("SELECT dedup_key, source_url, posted_at, last_verified_at FROM internships")).one()
+    assert row.dedup_key == dedup_key("data analyst intern", "nimbus inc", "pune")     # same rule as the app
+    assert (row.source_url, row.posted_at, row.last_verified_at) == (None, None, None)  # nothing guessed
+
+    with database.engine.begin() as conn:
+        conn.execute(text("INSERT INTO users (first_name, last_name, email, password_hash) VALUES ('P', 'S', 'p3@example.com', 'x')"))
+        conn.execute(text("INSERT INTO skills (name) VALUES ('Docker')"))
+        conn.execute(text("INSERT INTO skill_progress (user_id, skill_id, status) "
+                          "SELECT u.user_id, s.skill_id, 'learning' FROM users u, skills s"))
+    with pytest.raises(RuntimeError, match="Refusing to downgrade the skill-progress/job-source migration"):
+        command.downgrade(alembic_config, INVITATIONS)
+    with database.engine.connect() as conn:
+        assert conn.execute(text("SELECT count(*) FROM skill_progress")).scalar() == 1
+    alembic_config.cmd_opts = argparse.Namespace(x=["jobs_allow_data_loss=true"])
+    try:
+        command.downgrade(alembic_config, INVITATIONS)
+    finally:
+        alembic_config.cmd_opts = None
+    with database.engine.connect() as conn:
+        assert conn.execute(text("SELECT count(*) FROM internships")).scalar() == 1
+    command.upgrade(alembic_config, "head")
+    assert_no_drift(alembic_config)
+
+
+def test_study_documents_migration_is_additive_and_downgrade_protects_documents(alembic_config):
+    Base.metadata.drop_all(bind=database.engine)
+    Base.metadata.create_all(bind=database.engine)
+    command.stamp(alembic_config, "head")
+    command.downgrade(alembic_config, JOBS_P3)
+    tables = inspect(database.engine).get_table_names()
+    assert "study_documents" not in tables and "study_document_chunks" not in tables
+    with database.engine.begin() as conn:
+        conn.execute(text("INSERT INTO users (first_name, last_name, email, password_hash) VALUES ('S', 'D', 'sd@example.com', 'x')"))
+        users_before = conn.execute(text("SELECT count(*) FROM users")).scalar()
+    command.upgrade(alembic_config, STUDY_DOCS)
+    with database.engine.begin() as conn:
+        assert conn.execute(text("SELECT count(*) FROM users")).scalar() == users_before        # nothing else touched
+        conn.execute(text("INSERT INTO study_documents (user_id, filename, file_type, size_bytes, sha256, char_count, chunk_count) "
+                          "SELECT user_id, 'n.pdf', 'pdf', 10, repeat('a', 64), 50, 1 FROM users"))
+        conn.execute(text("INSERT INTO study_document_chunks (document_id, position, page, text) "
+                          "SELECT document_id, 0, 1, 'Text' FROM study_documents"))
+    with pytest.raises(RuntimeError, match="Refusing to drop study_documents"):
+        command.downgrade(alembic_config, JOBS_P3)
+    with database.engine.connect() as conn:
+        assert conn.execute(text("SELECT count(*) FROM study_document_chunks")).scalar() == 1
+    with database.engine.begin() as conn:                     # deleting a user removes their documents
+        conn.execute(text("DELETE FROM users"))
+        assert conn.execute(text("SELECT count(*) FROM study_document_chunks")).scalar() == 0
+    command.downgrade(alembic_config, JOBS_P3)
+    command.upgrade(alembic_config, "head")
+    assert_no_drift(alembic_config)
+
+
+def test_profile_and_resume_version_migration_keeps_existing_rows(alembic_config):
+    Base.metadata.drop_all(bind=database.engine)
+    Base.metadata.create_all(bind=database.engine)
+    command.stamp(alembic_config, "head")
+    command.downgrade(alembic_config, STUDY_DOCS)
+    assert "bio" not in columns("student_profiles") and "is_preferred" not in columns("resumes")
+    with database.engine.begin() as conn:
+        conn.execute(text("INSERT INTO users (first_name, last_name, email, password_hash) VALUES ('V', 'R', 'vr@example.com', 'x')"))
+        conn.execute(text("INSERT INTO student_profiles (user_id, college, degree) SELECT user_id, 'Example College', 'B.Tech' FROM users"))
+        conn.execute(text("INSERT INTO resumes (user_id, filename, file_path, file_type, status) "
+                          "SELECT user_id, 'cv.pdf', 'uploads/resumes/1/a.pdf', 'pdf', 'completed' FROM users"))
+        conn.execute(text("INSERT INTO resumes (user_id, filename, file_path, file_type, status) "
+                          "SELECT user_id, 'cv2.pdf', 'uploads/resumes/1/b.pdf', 'pdf', 'completed' FROM users"))
+    command.upgrade(alembic_config, PROFILE_VERSIONS)
+    with database.engine.begin() as conn:
+        profile = conn.execute(text("SELECT college, degree, bio, avatar_path FROM student_profiles")).one()
+        assert (profile.college, profile.degree, profile.bio, profile.avatar_path) == ("Example College", "B.Tech", None, None)
+        rows = conn.execute(text("SELECT filename, label, is_preferred FROM resumes ORDER BY resume_id")).all()
+        assert [(r.filename, r.label, r.is_preferred) for r in rows] == [("cv.pdf", None, False), ("cv2.pdf", None, False)]
+        conn.execute(text("UPDATE resumes SET is_preferred = true WHERE filename = 'cv.pdf'"))
+    with pytest.raises(Exception):                       # at most one preferred resume per student
+        with database.engine.begin() as conn:
+            conn.execute(text("UPDATE resumes SET is_preferred = true WHERE filename = 'cv2.pdf'"))
+    with pytest.raises(RuntimeError, match="Refusing to downgrade the profile/resume-version migration"):
+        command.downgrade(alembic_config, STUDY_DOCS)
+    with database.engine.begin() as conn:
+        conn.execute(text("UPDATE resumes SET is_preferred = false"))
+    command.downgrade(alembic_config, STUDY_DOCS)
+    command.upgrade(alembic_config, "head")
     assert_no_drift(alembic_config)

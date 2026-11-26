@@ -3,7 +3,7 @@ import { createContext, useCallback, useContext, useMemo, useRef, useState } fro
 const ToastContext = createContext(null);
 
 const TONES = {
-  success: "border-emerald-200 bg-emerald-50 text-emerald-900",
+  success: "border-mint-200 bg-mint-50 text-mint-900",
   error: "border-red-200 bg-red-50 text-red-900",
   info: "border-slate-200 bg-white text-slate-900",
 };

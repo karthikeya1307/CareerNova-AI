@@ -1,4 +1,4 @@
-"""Phase 2: FAISS index build, safety and search (fast test embedder)."""
+"""Phase 2: vector index build, safety and search (NumPy index, fast test embedder)."""
 
 import json
 import threading
@@ -45,14 +45,14 @@ def test_rebuild_writes_native_index_and_manifest(seeded, test_embedder, isolate
     assert result.indexed == 30
     files = sorted(p.name for p in isolated_index.iterdir())
     assert "manifest.json" in files
-    faiss_files = [f for f in files if f.endswith(".faiss")]
-    assert len(faiss_files) == 1
+    index_files = [f for f in files if f.endswith(".npz")]
+    assert len(index_files) == 1
     assert not [f for f in files if f.endswith((".pkl", ".pickle", ".tmp"))]
 
     manifest = json.loads((isolated_index / "manifest.json").read_text())
     assert manifest["count"] == 30
     assert manifest["dimension"] == test_embedder.dimension
-    assert manifest["index_file"] == faiss_files[0]
+    assert manifest["index_file"] == index_files[0]
 
     seeded.expire_all()
     statuses = seeded.scalars(select(KnowledgeDocument.indexing_status)).all()
@@ -64,7 +64,7 @@ def test_rebuild_replaces_old_index_file(seeded, test_embedder, isolated_index):
     first = json.loads((isolated_index / "manifest.json").read_text())["index_file"]
 
     vector_index.rebuild_index(test_embedder)
-    files = [p.name for p in isolated_index.iterdir() if p.suffix == ".faiss"]
+    files = [p.name for p in isolated_index.iterdir() if p.suffix == ".npz"]
 
     assert len(files) == 1 and files[0] != first
 
@@ -145,9 +145,9 @@ def test_pickle_files_are_never_loaded(db_session, test_embedder, isolated_index
         vector_index.load_index()
 
     # A manifest pointing at them is rejected by name.
-    for name in ("index.pkl", "index.faiss", "../index.faiss"):
+    for name in ("index.pkl", "index.faiss", "index.npz", "../index.npz"):
         (isolated_index / "manifest.json").write_text(json.dumps({
-            "format_version": 1, "index_file": name, "sha256": "x",
+            "format_version": vector_index.MANIFEST_FORMAT_VERSION, "index_file": name, "sha256": "x",
             "model_name": "m", "model_revision": "r", "dimension": 256,
             "count": 0, "built_at": "now",
         }))
@@ -219,7 +219,7 @@ def test_concurrent_rebuild_is_refused_and_index_stays_valid(
     assert outcome["result"].indexed == 30
 
     files = [p.name for p in isolated_index.iterdir()]
-    assert len([f for f in files if f.endswith(".faiss")]) == 1
+    assert len([f for f in files if f.endswith(".npz")]) == 1
     assert not [f for f in files if f.endswith(".tmp")]
     vector_index.clear_cache()
     assert vector_index.load_index().index.ntotal == 30
@@ -280,3 +280,145 @@ def test_status_reports_staleness(seeded, test_embedder, monkeypatch):
 def test_rebuild_dry_run_plan(seeded):
     plan = vector_index.plan_rebuild(seeded)
     assert plan == {"active_internships": 30, "new_or_changed": 30}
+
+
+# ------------------------------------------------------------------
+# NumPy index (replaces FAISS): ranking, persistence, corrupt and old files
+# ------------------------------------------------------------------
+
+def unit(rows):
+    import numpy as np
+
+    rows = np.asarray(rows, dtype="float32")
+    return rows / np.linalg.norm(rows, axis=1, keepdims=True)
+
+
+def test_numpy_index_ranks_by_cosine_similarity_with_document_ids():
+    import numpy as np
+
+    index = vector_index.NumpyIndex(3)
+    index.add_with_ids(unit([[1, 0, 0], [0, 1, 0], [1, 1, 0], [0, 0, 1]]), np.array([10, 20, 30, 40]))
+    scores, ids = index.search(unit([[1, 0.2, 0]]), 3)
+    assert ids.tolist() == [[10, 30, 20]]
+    assert scores[0].tolist() == sorted(scores[0].tolist(), reverse=True)
+    assert scores[0][0] == pytest.approx(float(unit([[1, 0.2, 0]])[0] @ unit([[1, 0, 0]])[0]), abs=1e-6)
+    assert index.ntotal == 4 and index.d == 3
+    assert index.reconstruct(30).tolist() == pytest.approx(unit([[1, 1, 0]])[0].tolist())
+    with pytest.raises(KeyError):
+        index.reconstruct(99)
+
+
+def test_numpy_index_pads_like_faiss_and_keeps_ties_in_insertion_order():
+    import numpy as np
+
+    index = vector_index.NumpyIndex(2)
+    index.add_with_ids(unit([[1, 0], [1, 0], [0, 1]]), np.array([7, 5, 9]))
+    scores, ids = index.search(unit([[1, 0]]), 5)
+    assert ids.tolist() == [[7, 5, 9, -1, -1]]                           # ties: insertion order
+    assert np.isneginf(scores[0][3:]).all()
+    empty_scores, empty_ids = vector_index.NumpyIndex(2).search(unit([[1, 0]]), 3)
+    assert empty_ids.tolist() == [[-1, -1, -1]]
+    with pytest.raises(ValueError):
+        index.add_with_ids(np.ones((1, 3), dtype="float32"), np.array([1]))   # wrong dimension
+
+
+def test_numpy_index_serialization_round_trip_including_empty():
+    import numpy as np
+
+    index = vector_index.NumpyIndex(4)
+    index.add_with_ids(unit([[1, 2, 3, 4], [4, 3, 2, 1]]), np.array([3, 8]))
+    copy = vector_index.deserialize_index(vector_index.serialize_index(index))
+    assert copy.d == 4 and copy.ids.tolist() == [3, 8]
+    assert np.array_equal(copy.vectors, index.vectors)
+    query = unit([[1, 2, 3, 3]])
+    assert [a.tolist() for a in copy.search(query, 2)] == [a.tolist() for a in index.search(query, 2)]
+
+    empty = vector_index.deserialize_index(vector_index.serialize_index(vector_index.NumpyIndex(4)))
+    assert empty.ntotal == 0 and empty.d == 4
+
+
+@pytest.mark.parametrize("make", [
+    lambda np, io: b"not an index at all",
+    lambda np, io: b"PK\x03\x04 truncated zip",
+    lambda np, io: _npz(np, io, ids=np.array([1], dtype="int64")),                                   # missing vectors
+    lambda np, io: _npz(np, io, ids=np.array([1], dtype="int64"), vectors=np.ones((1, 2), "float32"),
+                        extra=np.zeros(1)),                                                          # unexpected array
+    lambda np, io: _npz(np, io, ids=np.array([1.5]), vectors=np.ones((1, 2), "float32")),          # float ids
+    lambda np, io: _npz(np, io, ids=np.array([1, 2], dtype="int64"), vectors=np.ones((1, 2), "float32")),  # mismatch
+    lambda np, io: _npz(np, io, ids=np.array([1], dtype="int64"), vectors=np.array([[np.nan, 1]], "float32")),
+    lambda np, io: _npz(np, io, ids=np.array([{"x": 1}], dtype=object), vectors=np.ones((1, 2), "float32")),  # pickle
+])
+def test_corrupt_or_unsafe_index_data_is_rejected(make):
+    import io
+
+    import numpy as np
+
+    with pytest.raises(vector_index.IndexNotReadyError):
+        vector_index.deserialize_index(make(np, io))
+
+
+def _npz(np, io, **arrays):
+    buffer = io.BytesIO()
+    np.savez(buffer, **arrays)
+    return buffer.getvalue()
+
+
+def _write_manifest(directory, index_file, data, format_version, count=1, dimension=256):
+    import hashlib
+
+    (directory / index_file).write_bytes(data)
+    (directory / "manifest.json").write_text(json.dumps({
+        "format_version": format_version, "index_file": index_file,
+        "sha256": hashlib.sha256(data).hexdigest(), "model_name": "test-hashing", "model_revision": "test",
+        "dimension": dimension, "count": count, "built_at": "2026-01-01T00:00:00+00:00",
+    }))
+    vector_index.clear_cache()
+
+
+def test_old_faiss_index_is_never_read_and_requires_a_rebuild(seeded, test_embedder, isolated_index):
+    isolated_index.mkdir(parents=True, exist_ok=True)
+    name = "internships-" + "a" * 32 + ".faiss"
+    _write_manifest(isolated_index, name, b"IxMp legacy faiss bytes", format_version=1)
+    with pytest.raises(vector_index.IndexNotReadyError, match="Unsupported index format"):
+        vector_index.load_index()
+    with pytest.raises(vector_index.IndexNotReadyError):
+        vector_index.search(seeded, "python", 5, test_embedder)
+    assert vector_index.index_status(seeded)["stale"] is True
+
+    # Matching keeps working without semantic scores; a rebuild replaces the old index.
+    from backend.services import matching_agent
+    assert matching_agent.build_semantic_context(seeded, "python", 10).available is False
+    assert vector_index.rebuild_index(test_embedder).indexed == 30
+    assert vector_index.load_index().index.ntotal == 30
+
+
+def test_valid_checksum_but_unreadable_content_is_rejected(isolated_index):
+    isolated_index.mkdir(parents=True, exist_ok=True)
+    _write_manifest(isolated_index, "internships-" + "b" * 32 + ".npz", b"garbage", vector_index.MANIFEST_FORMAT_VERSION)
+    with pytest.raises(vector_index.IndexNotReadyError, match="unreadable"):
+        vector_index.load_index()
+
+
+def test_count_or_dimension_mismatch_is_rejected(isolated_index):
+    import numpy as np
+
+    index = vector_index.NumpyIndex(256)
+    index.add_with_ids(unit([[1.0] * 256]), np.array([1]))
+    isolated_index.mkdir(parents=True, exist_ok=True)
+    _write_manifest(isolated_index, "internships-" + "c" * 32 + ".npz", vector_index.serialize_index(index),
+                    vector_index.MANIFEST_FORMAT_VERSION, count=2)
+    with pytest.raises(vector_index.IndexNotReadyError, match="does not match its manifest"):
+        vector_index.load_index()
+
+
+def test_search_ranking_matches_brute_force_cosine(seeded, test_embedder):
+    import numpy as np
+
+    vector_index.rebuild_index(test_embedder)
+    documents = seeded.execute(select(KnowledgeDocument.document_id, KnowledgeDocument.content)
+                               .order_by(KnowledgeDocument.document_id)).all()
+    query = "python machine learning internship with sql"
+    expected_scores = test_embedder.embed([c for _, c in documents]) @ test_embedder.embed([query])[0]
+    expected = [documents[i][0] for i in np.argsort(-expected_scores, kind="stable")[:5]]
+    _, ids = vector_index.load_index().index.search(test_embedder.embed([query]), 5)
+    assert ids[0].tolist() == expected

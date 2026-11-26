@@ -1,0 +1,1019 @@
+{
+  "version": "tracks-v2",
+  "note": "Curated career tracks. Interview questions are taken from interview_question_bank.json and learning topics from learning_plans.json at request time. Resources are official documentation sites only.",
+  "official_resources": {
+    "Python": {
+      "title": "The Python Tutorial (python.org)",
+      "url": "https://docs.python.org/3/tutorial/"
+    },
+    "Java": {
+      "title": "Learn Java (dev.java)",
+      "url": "https://dev.java/learn/"
+    },
+    "JavaScript": {
+      "title": "JavaScript Guide (MDN)",
+      "url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide"
+    },
+    "HTML": {
+      "title": "Learn HTML (MDN)",
+      "url": "https://developer.mozilla.org/en-US/docs/Learn/HTML"
+    },
+    "CSS": {
+      "title": "Learn CSS (MDN)",
+      "url": "https://developer.mozilla.org/en-US/docs/Learn/CSS"
+    },
+    "TypeScript": {
+      "title": "TypeScript Documentation",
+      "url": "https://www.typescriptlang.org/docs/"
+    },
+    "React": {
+      "title": "Learn React (react.dev)",
+      "url": "https://react.dev/learn"
+    },
+    "Node.js": {
+      "title": "Learn Node.js (nodejs.org)",
+      "url": "https://nodejs.org/en/learn"
+    },
+    "Django": {
+      "title": "Django tutorial",
+      "url": "https://docs.djangoproject.com/en/stable/intro/tutorial01/"
+    },
+    "FastAPI": {
+      "title": "FastAPI tutorial",
+      "url": "https://fastapi.tiangolo.com/tutorial/"
+    },
+    "Spring Boot": {
+      "title": "Spring guides",
+      "url": "https://spring.io/guides"
+    },
+    "SQL": {
+      "title": "PostgreSQL tutorial",
+      "url": "https://www.postgresql.org/docs/current/tutorial.html"
+    },
+    "Git": {
+      "title": "Pro Git book",
+      "url": "https://git-scm.com/book/en/v2"
+    },
+    "Docker": {
+      "title": "Docker: Get started",
+      "url": "https://docs.docker.com/get-started/"
+    },
+    "Kubernetes": {
+      "title": "Kubernetes tutorials",
+      "url": "https://kubernetes.io/docs/tutorials/"
+    },
+    "Terraform": {
+      "title": "Terraform tutorials (HashiCorp)",
+      "url": "https://developer.hashicorp.com/terraform/tutorials"
+    },
+    "AWS": {
+      "title": "Getting started with AWS",
+      "url": "https://aws.amazon.com/getting-started/"
+    },
+    "Azure": {
+      "title": "Azure training (Microsoft Learn)",
+      "url": "https://learn.microsoft.com/en-us/training/azure/"
+    },
+    "GCP": {
+      "title": "Google Cloud: Get started",
+      "url": "https://cloud.google.com/docs/get-started"
+    },
+    "Pandas": {
+      "title": "pandas: Getting started",
+      "url": "https://pandas.pydata.org/docs/getting_started/index.html"
+    },
+    "NumPy": {
+      "title": "NumPy: the absolute basics",
+      "url": "https://numpy.org/doc/stable/user/absolute_beginners.html"
+    },
+    "Scikit-learn": {
+      "title": "scikit-learn tutorials",
+      "url": "https://scikit-learn.org/stable/tutorial/index.html"
+    },
+    "PyTorch": {
+      "title": "PyTorch tutorials",
+      "url": "https://pytorch.org/tutorials/"
+    },
+    "TensorFlow": {
+      "title": "TensorFlow tutorials",
+      "url": "https://www.tensorflow.org/tutorials"
+    },
+    "Jenkins": {
+      "title": "Jenkins tutorials",
+      "url": "https://www.jenkins.io/doc/tutorials/"
+    },
+    "Power BI": {
+      "title": "Power BI training (Microsoft Learn)",
+      "url": "https://learn.microsoft.com/en-us/training/powerplatform/power-bi"
+    },
+    "OWASP Top 10": {
+      "title": "OWASP Top 10",
+      "url": "https://owasp.org/www-project-top-ten/"
+    }
+  },
+  "tracks": [
+    {
+      "slug": "software-developer",
+      "title": "Software Developer",
+      "summary": "Builds and maintains applications: writes clean, tested code, works with databases and APIs, and collaborates through version control.",
+      "domains": [
+        "Software Development"
+      ],
+      "core_skills": [
+        "Data Structures",
+        "Algorithms",
+        "Git",
+        "SQL",
+        "Python",
+        "REST API"
+      ],
+      "advanced_skills": [
+        "Java",
+        "Docker",
+        "CI/CD",
+        "Linux"
+      ],
+      "roadmap": [
+        {
+          "stage": "Foundations",
+          "skills": [
+            "Python",
+            "Git",
+            "Data Structures"
+          ],
+          "goal": "Write small programs confidently and keep them in Git."
+        },
+        {
+          "stage": "Core engineering",
+          "skills": [
+            "Algorithms",
+            "SQL",
+            "REST API"
+          ],
+          "goal": "Solve common coding problems and build a database-backed API."
+        },
+        {
+          "stage": "Production skills",
+          "skills": [
+            "Docker",
+            "CI/CD",
+            "Linux"
+          ],
+          "goal": "Package, test and ship your code automatically."
+        }
+      ],
+      "exercises": [
+        "Implement a stack, queue and hash map from scratch and write unit tests for each.",
+        "Solve 20 easy and 10 medium array/string problems, noting the time complexity of each solution.",
+        "Design the tables for a library system and write SQL for borrowing and returning books."
+      ],
+      "projects": [
+        "A task-manager REST API with authentication, a database and automated tests.",
+        "A command-line tool that parses log files and reports statistics, published with a README."
+      ],
+      "resume_advice": [
+        "List languages and tools in a Skills section and show each one in a project.",
+        "Describe projects with the problem, your solution and a measurable result.",
+        "Link to a GitHub profile with clean, documented repositories."
+      ]
+    },
+    {
+      "slug": "ai-engineer",
+      "title": "AI Engineer",
+      "summary": "Turns machine-learning models (including language models) into reliable product features: data pipelines, model integration, evaluation and deployment.",
+      "domains": [
+        "Data Science"
+      ],
+      "core_skills": [
+        "Python",
+        "Machine Learning",
+        "Deep Learning",
+        "NLP",
+        "REST API",
+        "Git"
+      ],
+      "advanced_skills": [
+        "PyTorch",
+        "Docker",
+        "Computer Vision",
+        "AWS"
+      ],
+      "roadmap": [
+        {
+          "stage": "Foundations",
+          "skills": [
+            "Python",
+            "Git",
+            "Machine Learning"
+          ],
+          "goal": "Train and evaluate classic models on real datasets."
+        },
+        {
+          "stage": "Modern AI",
+          "skills": [
+            "Deep Learning",
+            "NLP",
+            "PyTorch"
+          ],
+          "goal": "Build and fine-tune neural networks for text tasks."
+        },
+        {
+          "stage": "AI in production",
+          "skills": [
+            "REST API",
+            "Docker",
+            "AWS"
+          ],
+          "goal": "Serve a model behind an API and deploy it."
+        }
+      ],
+      "exercises": [
+        "Train a text classifier and report precision, recall and F1 on a held-out set.",
+        "Write an evaluation script that compares two models on the same test data.",
+        "Wrap a trained model in a small HTTP API with input validation."
+      ],
+      "projects": [
+        "A document question-answering service that retrieves relevant passages before answering, with an evaluation set.",
+        "A sentiment-analysis API, containerised with Docker, with a short write-up of its accuracy and limits."
+      ],
+      "resume_advice": [
+        "Report model metrics and the dataset size for every AI project.",
+        "Show the engineering side: APIs, tests, deployment, not only notebooks.",
+        "Name the frameworks (PyTorch, scikit-learn) in each project description."
+      ]
+    },
+    {
+      "slug": "machine-learning-engineer",
+      "title": "Machine Learning Engineer",
+      "summary": "Designs, trains and maintains machine-learning models and the pipelines that feed and serve them.",
+      "domains": [
+        "Data Science"
+      ],
+      "core_skills": [
+        "Python",
+        "Machine Learning",
+        "Scikit-learn",
+        "Statistics",
+        "SQL",
+        "NumPy"
+      ],
+      "advanced_skills": [
+        "TensorFlow",
+        "PyTorch",
+        "Deep Learning",
+        "Docker"
+      ],
+      "roadmap": [
+        {
+          "stage": "Foundations",
+          "skills": [
+            "Python",
+            "NumPy",
+            "Statistics"
+          ],
+          "goal": "Handle data and reason about distributions and errors."
+        },
+        {
+          "stage": "Modelling",
+          "skills": [
+            "Machine Learning",
+            "Scikit-learn",
+            "SQL"
+          ],
+          "goal": "Build, validate and compare supervised models."
+        },
+        {
+          "stage": "Scaling up",
+          "skills": [
+            "Deep Learning",
+            "TensorFlow",
+            "Docker"
+          ],
+          "goal": "Train neural networks and package models for reuse."
+        }
+      ],
+      "exercises": [
+        "Implement linear regression with NumPy and compare it with scikit-learn's result.",
+        "Run k-fold cross-validation and explain over- and under-fitting from the results.",
+        "Write a feature pipeline that handles missing values and categorical columns."
+      ],
+      "projects": [
+        "An end-to-end prediction project: data cleaning, model selection, evaluation and a reproducible training script.",
+        "A model-monitoring report that compares predictions on new data with the training data."
+      ],
+      "resume_advice": [
+        "Quantify results (accuracy, error reduction) and state the baseline you beat.",
+        "Mention data size and how you validated the model.",
+        "Separate tools (scikit-learn, TensorFlow) from concepts (regression, classification)."
+      ]
+    },
+    {
+      "slug": "data-scientist",
+      "title": "Data Scientist",
+      "summary": "Answers business questions with data: exploration, statistics, modelling and clear communication of results.",
+      "domains": [
+        "Data Science"
+      ],
+      "core_skills": [
+        "Python",
+        "Statistics",
+        "Pandas",
+        "NumPy",
+        "SQL",
+        "Data Analysis"
+      ],
+      "advanced_skills": [
+        "Machine Learning",
+        "Scikit-learn",
+        "Tableau",
+        "Deep Learning"
+      ],
+      "roadmap": [
+        {
+          "stage": "Foundations",
+          "skills": [
+            "Python",
+            "SQL",
+            "Statistics"
+          ],
+          "goal": "Query, summarise and test hypotheses on data."
+        },
+        {
+          "stage": "Analysis",
+          "skills": [
+            "Pandas",
+            "NumPy",
+            "Data Analysis"
+          ],
+          "goal": "Clean and explore real datasets and present findings."
+        },
+        {
+          "stage": "Modelling",
+          "skills": [
+            "Machine Learning",
+            "Scikit-learn"
+          ],
+          "goal": "Build predictive models and explain them to non-experts."
+        }
+      ],
+      "exercises": [
+        "Clean a messy CSV with pandas and document every transformation.",
+        "Run and interpret an A/B test with a confidence interval.",
+        "Write five SQL queries using joins, grouping and window functions on a sample dataset."
+      ],
+      "projects": [
+        "An exploratory analysis of a public dataset with a written summary of three insights.",
+        "A churn or demand prediction model with feature importance and a plain-language explanation."
+      ],
+      "resume_advice": [
+        "Lead with the question you answered and the impact of the answer.",
+        "Show both analysis (SQL, pandas) and communication (dashboards, reports).",
+        "Mention the statistical methods you used."
+      ]
+    },
+    {
+      "slug": "data-analyst",
+      "title": "Data Analyst",
+      "summary": "Turns raw data into reports and dashboards that help teams make decisions.",
+      "domains": [
+        "Data Science",
+        "Business Analysis"
+      ],
+      "core_skills": [
+        "SQL",
+        "Excel",
+        "Data Analysis",
+        "Statistics",
+        "Tableau",
+        "Power BI"
+      ],
+      "advanced_skills": [
+        "Python",
+        "Pandas"
+      ],
+      "roadmap": [
+        {
+          "stage": "Foundations",
+          "skills": [
+            "Excel",
+            "SQL"
+          ],
+          "goal": "Clean data and answer questions with spreadsheets and queries."
+        },
+        {
+          "stage": "Reporting",
+          "skills": [
+            "Tableau",
+            "Power BI",
+            "Data Analysis"
+          ],
+          "goal": "Build dashboards that track business metrics."
+        },
+        {
+          "stage": "Deeper analysis",
+          "skills": [
+            "Statistics",
+            "Python",
+            "Pandas"
+          ],
+          "goal": "Automate analysis and test whether changes are significant."
+        }
+      ],
+      "exercises": [
+        "Build a pivot-table report and a chart from a sales dataset in Excel.",
+        "Write SQL to compute monthly revenue, growth and top products.",
+        "Design a one-page dashboard with three KPIs and a filter."
+      ],
+      "projects": [
+        "A sales or operations dashboard in Tableau or Power BI with a short guide for its users.",
+        "An automated weekly report generated from SQL and Python."
+      ],
+      "resume_advice": [
+        "Name the tools (SQL, Excel, Tableau/Power BI) and what you built with each.",
+        "Quantify the decisions your analysis supported.",
+        "Include a link to a public dashboard if you have one."
+      ]
+    },
+    {
+      "slug": "web-developer",
+      "title": "Web Developer",
+      "summary": "Builds responsive, accessible websites and web applications, from the user interface to the APIs behind it.",
+      "domains": [
+        "Web Development"
+      ],
+      "core_skills": [
+        "HTML",
+        "CSS",
+        "JavaScript",
+        "React",
+        "Git",
+        "REST API"
+      ],
+      "advanced_skills": [
+        "TypeScript",
+        "Node.js",
+        "Tailwind CSS",
+        "SQL"
+      ],
+      "roadmap": [
+        {
+          "stage": "Foundations",
+          "skills": [
+            "HTML",
+            "CSS",
+            "JavaScript"
+          ],
+          "goal": "Build accessible, responsive pages without a framework."
+        },
+        {
+          "stage": "Front-end apps",
+          "skills": [
+            "React",
+            "TypeScript",
+            "Git"
+          ],
+          "goal": "Build component-based apps with state and routing."
+        },
+        {
+          "stage": "Full stack",
+          "skills": [
+            "Node.js",
+            "REST API",
+            "SQL"
+          ],
+          "goal": "Connect your front end to your own API and database."
+        }
+      ],
+      "exercises": [
+        "Build a responsive landing page that passes an accessibility check.",
+        "Fetch data from an API in React and handle loading, empty and error states.",
+        "Add form validation with clear error messages."
+      ],
+      "projects": [
+        "A full-stack app (React + Node.js or similar) with authentication and a database.",
+        "A personal portfolio site, deployed, with case studies of your projects."
+      ],
+      "resume_advice": [
+        "Link to live demos and source code.",
+        "Mention accessibility and performance work explicitly.",
+        "Show both front-end and back-end skills if you have them."
+      ]
+    },
+    {
+      "slug": "java-developer",
+      "title": "Java Developer",
+      "summary": "Builds back-end services and applications in Java, typically with Spring Boot and relational databases.",
+      "domains": [
+        "Software Development"
+      ],
+      "core_skills": [
+        "Java",
+        "Spring Boot",
+        "SQL",
+        "REST API",
+        "Git",
+        "Data Structures"
+      ],
+      "advanced_skills": [
+        "Docker",
+        "Algorithms",
+        "CI/CD"
+      ],
+      "roadmap": [
+        {
+          "stage": "Foundations",
+          "skills": [
+            "Java",
+            "Git",
+            "Data Structures"
+          ],
+          "goal": "Write object-oriented Java with collections and tests."
+        },
+        {
+          "stage": "Back-end",
+          "skills": [
+            "Spring Boot",
+            "REST API",
+            "SQL"
+          ],
+          "goal": "Build a database-backed REST service."
+        },
+        {
+          "stage": "Delivery",
+          "skills": [
+            "Docker",
+            "CI/CD"
+          ],
+          "goal": "Package and test your service automatically."
+        }
+      ],
+      "exercises": [
+        "Model a small domain (e.g. orders) with classes, interfaces and unit tests.",
+        "Build CRUD endpoints with Spring Boot and validate the input.",
+        "Write a query that joins three tables and map the result to Java objects."
+      ],
+      "projects": [
+        "A Spring Boot REST API with a relational database, tests and API documentation.",
+        "A multi-module Java application with a clear package structure and a build pipeline."
+      ],
+      "resume_advice": [
+        "State the Java version and frameworks you used.",
+        "Describe API design and testing, not only features.",
+        "Show database work (schema design, queries)."
+      ]
+    },
+    {
+      "slug": "python-developer",
+      "title": "Python Developer",
+      "summary": "Builds back-end services, automation and data tools in Python.",
+      "domains": [
+        "Software Development",
+        "Web Development"
+      ],
+      "core_skills": [
+        "Python",
+        "Django",
+        "FastAPI",
+        "SQL",
+        "REST API",
+        "Git"
+      ],
+      "advanced_skills": [
+        "Docker",
+        "Linux",
+        "Pandas"
+      ],
+      "roadmap": [
+        {
+          "stage": "Foundations",
+          "skills": [
+            "Python",
+            "Git"
+          ],
+          "goal": "Write idiomatic, tested Python packages."
+        },
+        {
+          "stage": "Web back-ends",
+          "skills": [
+            "FastAPI",
+            "Django",
+            "SQL",
+            "REST API"
+          ],
+          "goal": "Build and document database-backed APIs."
+        },
+        {
+          "stage": "Operations",
+          "skills": [
+            "Docker",
+            "Linux"
+          ],
+          "goal": "Deploy and run Python services."
+        }
+      ],
+      "exercises": [
+        "Write a module with type hints, docstrings and pytest tests.",
+        "Build a FastAPI endpoint with request validation and error handling.",
+        "Automate a repetitive task (file renaming, report generation) with a script."
+      ],
+      "projects": [
+        "A FastAPI or Django service with authentication, a database and tests.",
+        "An automation tool that saves a measurable amount of manual work, with a README."
+      ],
+      "resume_advice": [
+        "Name the frameworks and show tests in your projects.",
+        "Mention automation results in time saved.",
+        "Keep a tidy GitHub with installable packages."
+      ]
+    },
+    {
+      "slug": "cybersecurity-analyst",
+      "title": "Cybersecurity Analyst",
+      "summary": "Protects systems and data: monitors for threats, investigates incidents and helps fix vulnerabilities.",
+      "domains": [
+        "Cybersecurity"
+      ],
+      "core_skills": [
+        "Networking",
+        "Linux",
+        "Monitoring",
+        "Python",
+        "OWASP Top 10",
+        "Incident Response"
+      ],
+      "advanced_skills": [
+        "AWS",
+        "Network Security"
+      ],
+      "roadmap": [
+        {
+          "stage": "Foundations",
+          "skills": [
+            "Networking",
+            "Linux"
+          ],
+          "goal": "Understand how networks and operating systems work and fail."
+        },
+        {
+          "stage": "Defence",
+          "skills": [
+            "Monitoring",
+            "Incident Response",
+            "OWASP Top 10"
+          ],
+          "goal": "Detect, investigate and report security issues."
+        },
+        {
+          "stage": "Automation and cloud",
+          "skills": [
+            "Python",
+            "AWS",
+            "Network Security"
+          ],
+          "goal": "Automate checks and secure cloud resources."
+        }
+      ],
+      "exercises": [
+        "Capture and explain the traffic of a web request (DNS, TCP, HTTP).",
+        "Review a sample web app against the OWASP Top 10 and write findings.",
+        "Write a script that flags suspicious lines in an authentication log."
+      ],
+      "projects": [
+        "A home-lab write-up: a monitored network with documented detection of a simulated attack.",
+        "A security assessment report of a deliberately vulnerable practice application."
+      ],
+      "resume_advice": [
+        "List labs and practice platforms you completed, with what you learned.",
+        "Show written reports: clear communication matters in security.",
+        "Mention relevant certifications you hold or are preparing for."
+      ]
+    },
+    {
+      "slug": "cloud-engineer",
+      "title": "Cloud Engineer",
+      "summary": "Designs, builds and operates infrastructure on cloud platforms, preferably as code.",
+      "domains": [
+        "DevOps/Cloud"
+      ],
+      "core_skills": [
+        "AWS",
+        "Linux",
+        "Networking",
+        "Terraform",
+        "Docker",
+        "Python"
+      ],
+      "advanced_skills": [
+        "Azure",
+        "GCP",
+        "Kubernetes",
+        "Monitoring"
+      ],
+      "roadmap": [
+        {
+          "stage": "Foundations",
+          "skills": [
+            "Linux",
+            "Networking"
+          ],
+          "goal": "Administer servers and understand cloud networking basics."
+        },
+        {
+          "stage": "Cloud platform",
+          "skills": [
+            "AWS",
+            "Docker"
+          ],
+          "goal": "Deploy applications on a cloud provider."
+        },
+        {
+          "stage": "Infrastructure as code",
+          "skills": [
+            "Terraform",
+            "Kubernetes",
+            "Monitoring"
+          ],
+          "goal": "Provision and observe infrastructure reproducibly."
+        }
+      ],
+      "exercises": [
+        "Deploy a static website on a cloud provider using its free tier.",
+        "Write Terraform for a network, a server and a security group.",
+        "Set up an alert when a server's CPU stays high."
+      ],
+      "projects": [
+        "A web app deployed with Terraform, including networking, a database and monitoring.",
+        "A cost and architecture write-up of a small cloud deployment."
+      ],
+      "resume_advice": [
+        "Name the cloud services you used and why.",
+        "Show infrastructure as code in public repositories.",
+        "Mention cloud certifications you hold or are preparing for."
+      ]
+    },
+    {
+      "slug": "devops-engineer",
+      "title": "DevOps Engineer",
+      "summary": "Automates how software is built, tested, deployed and monitored.",
+      "domains": [
+        "DevOps/Cloud"
+      ],
+      "core_skills": [
+        "Linux",
+        "Git",
+        "CI/CD",
+        "Docker",
+        "Kubernetes",
+        "Jenkins"
+      ],
+      "advanced_skills": [
+        "Terraform",
+        "Monitoring",
+        "AWS",
+        "Python"
+      ],
+      "roadmap": [
+        {
+          "stage": "Foundations",
+          "skills": [
+            "Linux",
+            "Git"
+          ],
+          "goal": "Work comfortably on the command line and with branches."
+        },
+        {
+          "stage": "Automation",
+          "skills": [
+            "CI/CD",
+            "Jenkins",
+            "Docker"
+          ],
+          "goal": "Build and test every change automatically."
+        },
+        {
+          "stage": "Operations",
+          "skills": [
+            "Kubernetes",
+            "Terraform",
+            "Monitoring"
+          ],
+          "goal": "Deploy, scale and observe services."
+        }
+      ],
+      "exercises": [
+        "Write a pipeline that runs tests and builds a container image on every push.",
+        "Write a Dockerfile for a web app and reduce the image size.",
+        "Deploy a container to a local Kubernetes cluster with a health check."
+      ],
+      "projects": [
+        "A complete CI/CD pipeline for a sample app: build, test, containerise and deploy.",
+        "A monitoring dashboard with alerts for a deployed service."
+      ],
+      "resume_advice": [
+        "Describe pipelines you built and what they improved (speed, reliability).",
+        "List tools by stage: build, deploy, monitor.",
+        "Link to repositories with pipeline configuration."
+      ]
+    },
+    {
+      "slug": "frontend-developer",
+      "title": "Frontend Developer",
+      "summary": "Builds the parts of web applications people see and use: accessible, responsive interfaces that talk to APIs.",
+      "domains": [
+        "Web Development"
+      ],
+      "core_skills": [
+        "HTML",
+        "CSS",
+        "JavaScript",
+        "React",
+        "TypeScript",
+        "Git"
+      ],
+      "advanced_skills": [
+        "Tailwind CSS",
+        "REST API",
+        "Vue",
+        "Angular"
+      ],
+      "roadmap": [
+        {
+          "stage": "Foundations",
+          "skills": [
+            "HTML",
+            "CSS",
+            "JavaScript"
+          ],
+          "goal": "Build semantic, responsive pages and add interactivity without a framework."
+        },
+        {
+          "stage": "Component apps",
+          "skills": [
+            "React",
+            "TypeScript",
+            "Git"
+          ],
+          "goal": "Build a typed single-page app from reusable components, kept in Git."
+        },
+        {
+          "stage": "Production front ends",
+          "skills": [
+            "REST API",
+            "Tailwind CSS",
+            "Vue",
+            "Angular"
+          ],
+          "goal": "Load data from APIs, handle loading/error states and compare frameworks."
+        }
+      ],
+      "exercises": [
+        "Rebuild a landing page from a screenshot with semantic HTML and a mobile-first layout.",
+        "Write a debounce function and a fetch wrapper with error handling in plain JavaScript.",
+        "Build a React form with validation, keyboard support and error messages linked to inputs."
+      ],
+      "projects": [
+        "A responsive dashboard in React and TypeScript that loads data from a public API with loading, empty and error states.",
+        "An accessible component library (button, modal, tabs) with keyboard support and documentation."
+      ],
+      "resume_advice": [
+        "Link a live demo and the repository for each front-end project.",
+        "Mention accessibility, responsiveness and performance work explicitly.",
+        "Name the framework, language and styling approach used in each project."
+      ]
+    },
+    {
+      "slug": "backend-developer",
+      "title": "Backend Developer",
+      "summary": "Builds the server side of applications: APIs, databases, authentication and the business logic behind them.",
+      "domains": [
+        "Software Development",
+        "Web Development"
+      ],
+      "core_skills": [
+        "Python",
+        "SQL",
+        "REST API",
+        "Node.js",
+        "Git",
+        "Data Structures"
+      ],
+      "advanced_skills": [
+        "Docker",
+        "Django",
+        "Spring Boot",
+        "Linux"
+      ],
+      "roadmap": [
+        {
+          "stage": "Foundations",
+          "skills": [
+            "Python",
+            "Data Structures",
+            "Git"
+          ],
+          "goal": "Write clean server-side code and manage it in Git."
+        },
+        {
+          "stage": "APIs and data",
+          "skills": [
+            "SQL",
+            "REST API",
+            "Node.js"
+          ],
+          "goal": "Design a relational schema and expose it through a validated REST API."
+        },
+        {
+          "stage": "Production back ends",
+          "skills": [
+            "Docker",
+            "Linux",
+            "Django",
+            "Spring Boot"
+          ],
+          "goal": "Containerise a service, run it on Linux and learn a full framework."
+        }
+      ],
+      "exercises": [
+        "Design tables for an online shop and write SQL with joins, grouping and an index.",
+        "Build a REST endpoint with input validation, pagination and proper status codes.",
+        "Add password hashing and token-based sign-in to a small API and test both."
+      ],
+      "projects": [
+        "A REST API for a booking system with authentication, a relational database and automated tests.",
+        "A background job that imports a CSV file into a database and reports errors, packaged with Docker."
+      ],
+      "resume_advice": [
+        "Describe the API, the database and how you tested them for each project.",
+        "Mention security work such as authentication, validation or rate limiting.",
+        "Quantify results honestly (requests handled, query time reduced) only where you measured them."
+      ]
+    },
+    {
+      "slug": "full-stack-developer",
+      "title": "Full Stack Developer",
+      "summary": "Builds complete web applications end to end: the interface, the API and the database, and ships them.",
+      "domains": [
+        "Web Development",
+        "Software Development"
+      ],
+      "core_skills": [
+        "JavaScript",
+        "React",
+        "Node.js",
+        "SQL",
+        "REST API",
+        "Git"
+      ],
+      "advanced_skills": [
+        "TypeScript",
+        "HTML",
+        "CSS",
+        "Docker"
+      ],
+      "roadmap": [
+        {
+          "stage": "Front end",
+          "skills": [
+            "HTML",
+            "CSS",
+            "JavaScript",
+            "React"
+          ],
+          "goal": "Build an interactive, responsive interface from components."
+        },
+        {
+          "stage": "Back end",
+          "skills": [
+            "Node.js",
+            "REST API",
+            "SQL"
+          ],
+          "goal": "Serve data from a database through a REST API you designed."
+        },
+        {
+          "stage": "Ship it",
+          "skills": [
+            "TypeScript",
+            "Git",
+            "Docker"
+          ],
+          "goal": "Type the whole app, keep it in Git and run it in a container."
+        }
+      ],
+      "exercises": [
+        "Connect a React form to an API endpoint that saves to a database and shows server errors in the form.",
+        "Write SQL for a one-to-many relationship and expose it as nested JSON from an API.",
+        "Add sign-in to a small full-stack app and protect one page and one endpoint."
+      ],
+      "projects": [
+        "A full-stack task or notes app with sign-in, a database, an API and a React front end, deployed with instructions.",
+        "A small e-commerce catalogue with search, filters and an admin page for adding products."
+      ],
+      "resume_advice": [
+        "Show which parts you built: front end, API, database, deployment.",
+        "Link the live app and the repository with a clear README.",
+        "List the stack per project rather than one long list of tools."
+      ]
+    }
+  ]
+}

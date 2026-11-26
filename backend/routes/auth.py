@@ -8,6 +8,7 @@ from fastapi import (
     Depends,
     HTTPException,
     Query,
+    Request,
     Response,
     status
 )
@@ -18,7 +19,10 @@ from sqlalchemy.orm import Session
 
 from pwdlib import PasswordHash
 
+from backend import database
 from backend.database import get_db
+from backend.services import audit, invitations, login_throttle
+from backend.utils.roles import is_super_admin_role
 
 from backend.models import (
     User,
@@ -36,9 +40,13 @@ from backend.schemas.user_schema import (
     ForgotPasswordRequest,
     ResendVerificationRequest,
     ResetPasswordRequest,
-    ChangePasswordRequest
+    ChangePasswordRequest,
+    AcceptInvitationRequest,
+    InvitationCheckResponse,
+    InvitationTokenRequest,
 )
 from backend.services.email_service import (
+    send_account_activated_email,
     send_verification_email,
     send_password_reset_email
 )
@@ -60,6 +68,7 @@ from backend.utils.dependencies import get_current_user
 
 # Verification links stay valid for 24 hours.
 VERIFICATION_TOKEN_EXPIRE_MINUTES = 1440
+PASSWORD_RESET_COOLDOWN_SECONDS = 60
 
 # Minimum wait between verification emails for one account.
 RESEND_VERIFICATION_COOLDOWN_SECONDS = 60
@@ -246,7 +255,7 @@ def resend_verification_email(
         select(User).where(func.lower(User.email) == email)
     )
 
-    if user is None or user.is_verified:
+    if user is None or user.is_verified or not user.is_active:
         return generic_response
 
     now = datetime.now(timezone.utc)
@@ -322,10 +331,26 @@ def resend_verification_email(
 )
 def login_user(
     user_data: UserLogin,
+    request: Request,
     db: Session = Depends(get_db)
 ):
 
     email = str(user_data.email).strip().lower()
+    client_ip = request.client.host if request.client else None
+
+    # Reserve this attempt atomically before checking the password, so
+    # repeated (or concurrent) failures are capped per email and address.
+    try:
+        reservation = login_throttle.reserve(database.engine, email, client_ip)
+    except login_throttle.LoginThrottled as exc:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=(
+                "Too many failed sign-in attempts. "
+                f"Try again in {max(1, round(exc.retry_after / 60))} minute(s)."
+            ),
+            headers={"Retry-After": str(exc.retry_after)},
+        )
 
     user = db.scalar(
         select(User).where(func.lower(User.email) == email)
@@ -338,9 +363,29 @@ def login_user(
             user.password_hash
         )
     ):
+        if reservation.locks_now:
+            # One audit record when an email reaches the limit (no password,
+            # no email for unknown accounts; only the account if it exists).
+            audit.record(
+                db, "auth.login_locked", target=user,
+                target_label=None if user is not None else "unknown account",
+                details={"limit": login_throttle.EMAIL_LIMIT,
+                         "window_minutes": int(login_throttle.WINDOW.total_seconds() // 60)},
+                ip_address=client_ip,
+            )
+            db.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password"
+        )
+
+    # The password was right: this is not a guessing attempt.
+    login_throttle.succeeded(database.engine, reservation)
+
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This account has been deactivated. Contact an administrator."
         )
 
     if not user.is_verified:
@@ -365,6 +410,7 @@ def login_user(
 
     try:
         db.add(new_session)
+        user.last_login_at = datetime.now(timezone.utc)
         db.flush()
 
         # Include the database session ID in the access JWT.
@@ -434,7 +480,7 @@ def refresh_access_token(
 
     user = db.get(User, auth_session.user_id)
 
-    if user is None or not user.is_verified:
+    if user is None or not user.is_verified or not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User account is unavailable"
@@ -551,6 +597,13 @@ def delete_user_account(
             detail="Incorrect current password"
         )
 
+    # The protected super admin account cannot be deleted through the API.
+    if is_super_admin_role(current_user.role):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="The super admin account cannot be deleted"
+        )
+
     try:
         db.delete(current_user)
         db.commit()
@@ -595,10 +648,22 @@ def forgot_password(
         )
     }
 
-    if user is None:
+    if user is None or not user.is_active:
         return generic_response
 
     now = datetime.now(timezone.utc)
+
+    # Limit reset emails: at most one per account per cooldown (same generic answer).
+    last_reset = db.scalar(
+        select(func.max(PasswordResetToken.created_at)).where(
+            PasswordResetToken.user_id == user.user_id
+        )
+    )
+    if last_reset is not None:
+        if last_reset.tzinfo is None:
+            last_reset = last_reset.replace(tzinfo=timezone.utc)
+        if (now - last_reset).total_seconds() < PASSWORD_RESET_COOLDOWN_SECONDS:
+            return generic_response
 
     # Invalidate previous unused reset tokens.
     previous_tokens = db.scalars(
@@ -694,6 +759,13 @@ def reset_password(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User account not found"
+        )
+
+    # A token issued before deactivation cannot be used to regain access.
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or already used password reset token"
         )
 
     try:
@@ -805,3 +877,56 @@ def change_password(
             "Please log in again using your new password."
         )
     }
+
+
+# ============================================================
+# INVITATIONS (account activation by the invited person)
+# POST /auth/invitation/check   {token}           -> who the invitation is for
+# POST /auth/invitation/accept  {token, password} -> set own password, activate
+# The token travels in the request body, never in a URL the server logs.
+# ============================================================
+
+def invitation_error(exc: invitations.InvitationError) -> HTTPException:
+    code = status.HTTP_410_GONE if exc.code in ("expired", "used", "revoked") else status.HTTP_400_BAD_REQUEST
+    return HTTPException(status_code=code, detail={"code": exc.code, "message": exc.message})
+
+
+@router.post(
+    "/invitation/check",
+    response_model=InvitationCheckResponse
+)
+def check_invitation(request: InvitationTokenRequest, db: Session = Depends(get_db)):
+    try:
+        invitation, user = invitations.find_valid(db, request.token)
+    except invitations.InvitationError as exc:
+        raise invitation_error(exc)
+    return {"email": user.email, "first_name": user.first_name, "last_name": user.last_name,
+            "expires_at": invitation.expires_at}
+
+
+@router.post(
+    "/invitation/accept",
+    status_code=status.HTTP_200_OK
+)
+def accept_invitation(
+    payload: AcceptInvitationRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    try:
+        user = invitations.accept(db, payload.token, password_hasher.hash(payload.password))
+        audit.record(db, "user.activate", actor=user, target=user, details={"via": "invitation"},
+                     ip_address=request.client.host if request.client else None)
+        db.commit()
+    except invitations.InvitationError as exc:
+        db.rollback()
+        raise invitation_error(exc)
+
+    # Confirmation email (best effort: activation already succeeded).
+    try:
+        send_account_activated_email(user.email, user.first_name, user.user_id)
+    except Exception:  # pragma: no cover - never fails the activation
+        pass
+
+    return {"message": "Your account is active. You can now sign in with your new password.",
+            "email": user.email}

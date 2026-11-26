@@ -141,6 +141,20 @@ class Outbox:
             if m["kind"] == kind and m["to"] == to_email
         )
 
+    def _invite(self, to_email, token, **context):
+        from backend.services.mailer import DeliveryResult
+
+        if self.fail:
+            return DeliveryResult("failed", "connect_failed", "Simulated SMTP failure")
+        self.messages.append({"kind": "invite", "to": to_email, "token": token, **context})
+        return DeliveryResult("sent", None, "captured by the test outbox")
+
+    def _activated(self, to_email, first_name=None, user_id=None):
+        from backend.services.mailer import DeliveryResult
+
+        self.messages.append({"kind": "activated", "to": to_email, "token": None})
+        return DeliveryResult("sent", None, "captured by the test outbox")
+
 
 @pytest.fixture(autouse=True)
 def outbox(monkeypatch):
@@ -153,13 +167,25 @@ def outbox(monkeypatch):
         "backend.routes.auth.send_password_reset_email",
         box._send("reset"),
     )
+    # Invitation and activation emails (Phase 2) are captured too: no test reaches a mail server.
+    monkeypatch.setattr("backend.routes.admin.send_invitation_email", box._invite)
+    monkeypatch.setattr("backend.routes.auth.send_account_activated_email", box._activated)
     return box
+
+
+@pytest.fixture(autouse=True)
+def no_real_email(monkeypatch, tmp_path):
+    """The real mailer (when a test calls it directly) never sends: outbox mode in a temp folder."""
+    monkeypatch.setenv("EMAIL_MODE", "outbox")
+    monkeypatch.setenv("EMAIL_OUTBOX_DIR", str(tmp_path / "email_outbox"))
+    monkeypatch.setenv("FRONTEND_URL", "http://localhost:5173")
 
 
 @pytest.fixture(autouse=True)
 def isolated_uploads(monkeypatch, tmp_path):
     upload_dir = tmp_path / "uploads" / "resumes"
     monkeypatch.setattr("backend.routes.resumes.UPLOAD_DIR", upload_dir)
+    monkeypatch.setattr("backend.services.avatars.AVATAR_DIR", tmp_path / "uploads" / "avatars")
     return upload_dir
 
 

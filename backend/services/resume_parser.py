@@ -1,6 +1,6 @@
 
 """
-AI Career Companion - Resume Parser
+CareerNova AI - Resume Parser
 
 Supports:
 - PDF text extraction using PyPDF
@@ -186,8 +186,81 @@ def _detect_heading(line: str) -> tuple[str | None, str]:
 # 2. PDF TEXT EXTRACTION
 # ============================================================
 
+def count_headings(text: str) -> int:
+    """Number of lines recognised as section headings."""
+    return sum(1 for line in text.splitlines() if line.strip() and _detect_heading(line)[0])
+
+
+def _page_fragments(page: Any) -> list[tuple[float, float, str]]:
+    """Text fragments with their (x, y) position on the page."""
+    fragments: list[tuple[float, float, str]] = []
+
+    def visit(text, cm, tm, font_dict, font_size):
+        if text and text.strip():
+            x = tm[4] * cm[0] + tm[5] * cm[2] + cm[4]
+            y = tm[4] * cm[1] + tm[5] * cm[3] + cm[5]
+            fragments.append((float(x), float(y), text.strip()))
+
+    page.extract_text(visitor_text=visit)
+    return fragments
+
+
+def _lines_from(fragments: list[tuple[float, float, str]]) -> list[str]:
+    """Group fragments into lines (same baseline), top to bottom, left to right."""
+    rows: dict[int, list[tuple[float, str]]] = {}
+    for x, y, text in fragments:
+        rows.setdefault(round(y / 2), []).append((x, text))
+    return [" ".join(t for _, t in sorted(rows[key])) for key in sorted(rows, reverse=True)]
+
+
+def split_columns(fragments: list[tuple[float, float, str]], width: float) -> list[list] | None:
+    """Detect a two-column layout: a vertical gap in the middle of the page with a
+    substantial amount of text on both sides, at overlapping heights. Returns the
+    fragments of [left, right], or None for a single-column page."""
+    if len(fragments) < 8 or width <= 0:
+        return None
+    starts = sorted({round(x) for x, _, _ in fragments})
+    best = None
+    for left, right in zip(starts, starts[1:]):
+        gap = right - left
+        middle = (left + right) / 2
+        if 0.25 * width <= middle <= 0.75 * width and gap >= 0.08 * width and (best is None or gap > best[0]):
+            best = (gap, right)
+    if best is None:
+        return None
+    boundary = best[1] - 0.5
+    left_side = [f for f in fragments if f[0] < boundary]
+    right_side = [f for f in fragments if f[0] >= boundary]
+    total = sum(len(t) for _, _, t in fragments)
+    chars = lambda side: sum(len(t) for _, _, t in side)  # noqa: E731
+    if min(len(left_side), len(right_side)) < 5 or min(chars(left_side), chars(right_side)) < 0.2 * total:
+        return None
+    # Columns sit side by side: the two sides must share vertical space.
+    left_y = (min(y for _, y, _ in left_side), max(y for _, y, _ in left_side))
+    right_y = (min(y for _, y, _ in right_side), max(y for _, y, _ in right_side))
+    overlap = min(left_y[1], right_y[1]) - max(left_y[0], right_y[0])
+    if overlap <= 0:
+        return None
+    return [left_side, right_side]
+
+
+def page_text(page: Any) -> str:
+    """Plain extraction, or column-by-column reading order when the page is laid out in
+    two columns AND that order recognises at least as many section headings."""
+    plain = page.extract_text() or ""
+    try:
+        fragments = _page_fragments(page)
+        columns = split_columns(fragments, float(page.mediabox.width))
+    except Exception:
+        return plain
+    if not columns:
+        return plain
+    ordered = "\n".join("\n".join(_lines_from(column)) for column in columns)
+    return ordered if count_headings(ordered) >= max(1, count_headings(plain)) else plain
+
+
 def extract_pdf_text(file_bytes: bytes) -> str:
-    """Extract selectable text from a PDF."""
+    """Extract selectable text from a PDF (multi-column pages are read column by column)."""
 
     if not file_bytes:
         raise ValueError("Uploaded file is empty.")
@@ -203,9 +276,7 @@ def extract_pdf_text(file_bytes: bytes) -> str:
         page_texts = []
 
         for page in reader.pages:
-            page_texts.append(
-                page.extract_text() or ""
-            )
+            page_texts.append(page_text(page))
 
         return "\n".join(page_texts)
 
@@ -648,8 +719,10 @@ def extract_contact_information(
 
     phone = None
 
+    # Spaces/tabs only (never a newline): a phone number must not swallow the
+    # digits that start the next line (e.g. a street number in the address).
     phone_pattern = (
-        r"(?<!\w)\+?\d[\d\s().-]{7,}\d(?!\w)"
+        r"(?<!\w)\+?\d[\d \t().-]{7,}\d(?!\w)"
     )
 
     for match in re.finditer(
@@ -981,107 +1054,212 @@ def extract_education_entries(
 PROJECT_ACTION_PATTERN = re.compile(
     r"^(?:developed|implemented|designed|built|created|"
     r"engineered|deployed|integrated|trained|evaluated|"
-    r"optimized|automated|led|contributed|published|"
-    r"presented)\b",
+    r"optimi[sz]ed|automated|led|contributed|published|"
+    r"presented|applied|improved|achieved|analy[sz]ed|used|"
+    r"utili[sz]ed|performed|conducted|collaborated|worked|"
+    r"wrote|tested|reduced|increased|enhanced|migrated|"
+    r"maintained|managed|researched|visuali[sz]ed|cleaned|"
+    r"processed|extracted|predicted|classified|fine-tuned|"
+    r"leveraged|containeri[sz]ed|configured|added|enabled)\b",
     re.IGNORECASE,
 )
+
+# Bullet markers as they appear in extracted text (PDF keeps the character; Word list bullets
+# have none, so description lines are also recognised by their wording - see _is_description).
+PROJECT_BULLET = re.compile(r"^\s*(?:[•▪●◦·‣⁃∙○■□►▶➢➤✓✔➔→\-–—*]+|\(?\d{1,2}[.)])\s*")
+PROJECT_TITLE_WORDS = re.compile(
+    r"\b(?:project|projects|application|app|assistant|optimi[sz]ation|detection|management|prediction|"
+    r"platform|system|website|portal|dashboard|tracker|chatbot|bot|analy[sz]er|analysis|classifier|"
+    r"recommender|recommendation|generator|simulator|clone|api|engine|tool|pipeline|model)\b",
+    re.IGNORECASE,
+)
+TECH_PREFIX = re.compile(r"^(?:tech(?:nolog(?:y|ies))?(?:\s+stack)?|tools?(?:\s+used)?|stack|built\s+with)\s*[:\-–—]\s*",
+                         re.IGNORECASE)
+KNOWN_TECH = re.compile(
+    r"^(?:python|java|javascript|typescript|react(?:\.js)?|node(?:\.js)?|c\+\+|c#|c|sql|mysql|postgresql|mongodb|"
+    r"aws|azure|gcp|html|css|tensorflow|pytorch|keras|scikit-learn|sklearn|pandas|numpy|flask|django|fastapi|"
+    r"streamlit|docker|kubernetes|git|power bi|tableau|excel|opencv|nlp|llms?|rag|machine learning|deep learning)\b",
+    re.IGNORECASE,
+)
+DATE_ITEM = re.compile(
+    r"(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+)?(?:19|20)\d{2}"
+    r"(?:\s*[-–—to]+\s*(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+)?(?:(?:19|20)\d{2}|present|current|now))?"
+    r"|present|ongoing",
+    re.IGNORECASE,
+)
+# A list separator between technologies (em/en dash or bar with spaces, middle dot, comma).
+TECH_SPLIT = re.compile(r"\s+[—–|·]\s+|\s*\|\s*|,\s*")
+
+
+def _tech_items(text: str) -> list[str]:
+    items = [i.strip(" .;:") for i in TECH_SPLIT.split(TECH_PREFIX.sub("", text.strip()))]
+    return [i for i in items if i and len(i) <= 40]
+
+
+def _looks_like_tech_list(segments: list[str]) -> bool:
+    """Short items (1-4 words each) - a technology list, not a sentence or a subtitle."""
+    return bool(segments) and all(0 < len(s) <= 30 and len(s.split()) <= 4 and not s.endswith(".") for s in segments)
+
+
+def _split_title_and_stack(text: str) -> tuple[str, list[str]]:
+    """'Fake Review Detection ApplicationPython — Deep Learning — React.js' -> title + technologies.
+
+    In PDFs the right-aligned technology list is often glued to the title with no space
+    ('ApplicationPython'); the glue point is the last lower-to-upper case change before the list."""
+    # Only an em dash or a bar separates the title from its technologies; an en dash is part of
+    # many titles ("StudyBuddy – AI-Powered Study Assistant").
+    parts = re.split(r"\s+[—|]\s+|\s*\|\s*", text)
+    techs = [item for part in parts[1:] for item in _tech_items(part)]
+    if len(parts) >= 2 and _looks_like_tech_list(techs):
+        head = parts[0].strip()
+        # The first technology often sits on the title itself: glued ("AssistantPython") or after a space.
+        glued = re.search(r"(?<=[a-z0-9)])([A-Z][\w.+#-]{0,20})$", head)
+        spaced = re.search(r"\s([A-Za-z][\w.+#-]{0,20})$", head)
+        for found in (glued, spaced):
+            if found and " " in head[: found.start()].strip() and KNOWN_TECH.fullmatch(found.group(1)):
+                head, techs = head[: found.start()].rstrip(), [found.group(1), *techs]
+                break
+        # A date in the list ("— Jan 2024", "| 2023 - Present") belongs to the title, not the technologies.
+        dates = [t for t in techs if DATE_ITEM.fullmatch(t)]
+        techs = [t for t in techs if not DATE_ITEM.fullmatch(t)]
+        if dates:
+            head = f"{head.rstrip(' :–—-')} ({', '.join(dates)})"
+        if head and (techs or dates):
+            return head.rstrip(" :–—-"), techs
+    if ":" in text and not text.rstrip().endswith(":"):
+        left, right = text.split(":", 1)
+        right_items = _tech_items(right)
+        if len(left) <= 80 and len(right_items) >= 2 and _looks_like_tech_list(right_items):
+            return left.strip(), right_items
+    return text, []
+
+
+def _inline_project(name: str, rest: str) -> bool:
+    """'Survey Statistics - Ran hypothesis tests ...': a Title Case name (2-8 words) and a sentence."""
+    words = name.split()
+    if re.search(r"\s[—|]\s", rest) or _looks_like_tech_list(_tech_items(rest)):
+        return False                                   # "Title — Python — SQL": a technology list, not a sentence
+    return (2 <= len(words) <= 8 and sum(w[0].isupper() for w in words) / len(words) >= 0.6
+            and len(rest.split()) >= 4 and rest[:1].isupper()) or bool(PROJECT_ACTION_PATTERN.match(rest))
+
+
+def _wrapped(text: str) -> bool:
+    """A long line that stops mid-sentence was most likely wrapped at the page edge (PDF)."""
+    return len(text) >= 70 and not re.search(r"[.!?:;)]$", text)
+
+
+def _is_description(text: str, had_bullet: bool) -> bool:
+    return bool(
+        had_bullet
+        or PROJECT_ACTION_PATTERN.match(text)
+        or text[:1].islower()
+        or (text.endswith(".") and len(text) > 60)
+    )
+
+
+def _is_title(text: str, previous_open: bool) -> bool:
+    """A project heading: short, not a sentence, and named like a project (keywords, separators,
+    a trailing colon, or Title Case)."""
+    if len(text) > 150 or text.endswith(".") or previous_open:
+        return False
+    words = re.findall(r"[A-Za-z][\w'&.+#-]*", text)
+    capitalised = sum(1 for w in words if w[0].isupper() or w.isupper())
+    title_case = 1 <= len(words) <= 12 and capitalised / len(words) >= 0.6
+    return bool(
+        PROJECT_TITLE_WORDS.search(text)
+        or re.search(r"\s[—–|]\s", text)
+        or text.endswith(":")
+        or title_case
+    )
 
 
 def extract_project_entries(
     section_text: str,
 ) -> list[dict[str, Any]]:
-    """Split project content using title and description patterns."""
+    """Group the Projects section into one entry per project.
+
+    A project starts at a heading line (its title, optionally with a technology list); every
+    following description line - bullets, action-verb sentences, wrapped continuation lines -
+    stays with that project until the next heading. Description lines can never start a project,
+    so words like 'system' or 'application' inside a bullet don't split it. Technologies found on
+    the heading or on a 'Technologies:' line are kept as a 'Technologies: ...' line under the title.
+    The number of projects is never assumed; anything not recognised stays in the text."""
 
     if not section_text or not section_text.strip():
         return []
 
-    lines = [
-        line.strip()
-        for line in section_text.splitlines()
-        if line.strip()
-    ]
+    projects: list[dict[str, list[str]]] = []
+    current: dict[str, list[str]] | None = None
+    previous_open = False            # the previous description line was cut mid-sentence (PDF wrapping)
 
-    entries: list[list[str]] = []
-    current: list[str] = []
+    def start(title_lines: list[str]) -> dict[str, list[str]]:
+        project = {"title": title_lines, "tech": [], "desc": []}
+        projects.append(project)
+        return project
 
-    title_keywords = (
-        "project",
-        "application",
-        "assistant",
-        "optimization",
-        "detection",
-        "management",
-        "prediction",
-        "platform",
-        "system",
-        "researchrag",
-    )
-
-    for line in lines:
-
-        clean = line.lstrip("•▪*- ").strip()
-
-        is_action = bool(
-            PROJECT_ACTION_PATTERN.match(clean)
-        )
-
-        is_publication_heading = (
-            normalize_heading(clean)
-            in {"publication", "publications"}
-        )
-
-        is_stack_line = bool(
-            re.match(
-                r"^(?:python|java|javascript|typescript|"
-                r"react(?:\.js)?|node(?:\.js)?|c\+\+|c|sql|"
-                r"aws|azure|html|css|tensorflow|pytorch|"
-                r"machine learning|deep learning)\b",
-                clean,
-                flags=re.IGNORECASE,
-            )
-        ) and any(
-            separator in clean
-            for separator in ("—", "-", "|", ",")
-        )
-
-        is_title = (
-            not is_action
-            and not is_stack_line
-            and len(clean) <= 180
-            and (
-                any(
-                    word in clean.casefold()
-                    for word in title_keywords
-                )
-                or " | " in clean
-                or " — " in clean
-            )
-        )
-
-        if is_publication_heading:
-
-            if current:
-                entries.append(current)
-                current = []
-
+    for raw in section_text.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        bullet = PROJECT_BULLET.match(line)
+        text = line[bullet.end():].strip() if bullet else line
+        if not text:
+            continue
+        if normalize_heading(text) in {"publication", "publications"}:
+            current, previous_open = None, False
             continue
 
-        if is_title and current:
+        # A wrapped line continues the previous sentence ("...checkout-counter" / "allocation.").
+        if current is not None and current["desc"] and previous_open and not bullet and (
+                text[:1].islower() or not _is_title(text, False)):
+            last = current["desc"][-1]
+            current["desc"][-1] = (last[:-1] + text) if last.endswith("-") and text[:1].islower() else f"{last} {text}"
+            previous_open = _wrapped(current["desc"][-1])
+            continue
 
-            entries.append(current)
-            current = [clean]
+        if TECH_PREFIX.match(text) and current is not None:
+            current["tech"].extend(_tech_items(text))
+            previous_open = False
+            continue
 
-        else:
-            current.append(clean)
+        inline = re.match(r"^([A-Z][^.:]{2,70}?)\s+[-–—:]\s+(.{20,})$", text)
+        if not bullet and not previous_open and inline and _inline_project(inline.group(1), inline.group(2)):
+            # "Sales Dashboard - Built a Tableau dashboard ..." : title and description on one line.
+            current = start([inline.group(1).strip()])
+            current["desc"].append(inline.group(2).strip())
+            previous_open = _wrapped(text)
+            continue
 
-    if current:
-        entries.append(current)
+        if not _is_description(text, bool(bullet)) and _is_title(text, previous_open):
+            title, techs = _split_title_and_stack(text)
+            title = title.rstrip(" :") or title          # "Churn Analysis:" -> "Churn Analysis"
+            stack_only = not techs and KNOWN_TECH.match(text) and len(_tech_items(text)) >= 2
+            if stack_only and current is not None:
+                current["tech"].extend(_tech_items(text))         # "Python, Flask, MySQL" under a title
+            elif current is not None and not current["desc"] and not current["tech"]:
+                current["title"].append(title)                     # a subtitle right after the title
+                current["tech"].extend(techs)
+            else:
+                current = start([title])
+                current["tech"].extend(techs)
+            previous_open = False
+            continue
 
-    return [
-        {"details": "\n".join(group)}
-        for group in entries
-        if group
-    ]
+        if current is None:
+            current = start([])
+        current["desc"].append(text)
+        previous_open = _wrapped(text)
+
+    entries, seen = [], set()
+    for project in projects:
+        techs = list(dict.fromkeys(t for t in project["tech"] if t))
+        lines = [*project["title"], *([f"Technologies: {', '.join(techs)}"] if techs else []), *project["desc"]]
+        details = "\n".join(lines)
+        key = re.sub(r"\W+", " ", details).casefold().strip()
+        if lines and key not in seen:            # the same project printed twice (e.g. table + text) is kept once
+            seen.add(key)
+            entries.append({"details": details})
+    return entries
 
 
 # ============================================================
@@ -1304,7 +1482,7 @@ def parse_resume_file(
     filename: str,
 ) -> dict[str, Any]:
     """
-    Parse a PDF or DOCX resume.
+    Parse a PDF, DOCX or ODT resume.
 
     Returns the existing API structure:
 
@@ -1353,9 +1531,25 @@ def parse_resume_file(
 
         parser_type = "python-docx"
 
+    elif extension == "odt":
+
+        from backend.services.resume_parsers.common import ResumeFileError, extract_odt_text
+
+        try:
+            extracted_text = clean_text(extract_odt_text(file_bytes))
+        except ResumeFileError as exc:
+            raise ValueError(str(exc)) from None
+
+        if not extracted_text:
+            raise ValueError("No readable text found in the ODT document.")
+
+        parsed_data = parse_resume_text(extracted_text)
+
+        parser_type = "odt-xml"
+
     else:
         raise ValueError(
-            "Unsupported file format. Upload PDF or DOCX."
+            "Unsupported file format. Upload PDF, DOCX or ODT."
         )
 
     return {

@@ -1,13 +1,18 @@
-"""FAISS vector index for internships, rebuilt from PostgreSQL.
+"""Vector index for internships (NumPy), rebuilt from PostgreSQL.
 
-PostgreSQL is the single source of truth. The FAISS index only maps
+PostgreSQL is the single source of truth. The index only maps
 ``knowledge_documents.document_id`` -> vector. Every search result is
 re-checked against PostgreSQL, so inactive or deleted internships never
 appear, even when the index on disk is old.
 
 Files (in FAISS_INDEX_DIR, gitignored):
     manifest.json                 commit point: describes the live index
-    internships-<build id>.faiss  native FAISS binary (never pickle)
+    internships-<build id>.npz    NumPy arrays ``ids`` (int64) and ``vectors``
+                                  (float32); loaded with allow_pickle=False
+
+Search is exact inner product on L2-normalised vectors (cosine similarity),
+the same ranking as the FAISS ``IndexFlatIP`` used before. Indexes written by
+FAISS (manifest format 1, ``*.faiss``) are rejected: rebuild required.
 
 Rebuild safety:
 * A PostgreSQL advisory lock allows only one rebuild at a time across
@@ -34,7 +39,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-import faiss
+import io
+import zipfile
+
 import numpy as np
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session, selectinload
@@ -47,8 +54,8 @@ from backend.services.internship_text import build_internship_text, content_hash
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 MANIFEST_NAME = "manifest.json"
-INDEX_FILE_PATTERN = re.compile(r"^internships-[0-9a-f]{32}\.faiss$")
-MANIFEST_FORMAT_VERSION = 1
+INDEX_FILE_PATTERN = re.compile(r"^internships-[0-9a-f]{32}\.npz$")
+MANIFEST_FORMAT_VERSION = 2          # 1 = FAISS binary (no longer readable)
 SOURCE_TYPE = "internship"
 
 # Arbitrary constant key for pg_try_advisory_lock.
@@ -68,6 +75,88 @@ class IndexNotReadyError(VectorIndexError):
 
 class IndexBusyError(VectorIndexError):
     """Another rebuild is already running."""
+
+
+# ============================================================
+# NUMPY INDEX (replaces FAISS IndexIDMap2(IndexFlatIP))
+# ============================================================
+
+class NumpyIndex:
+    """Exact inner-product index with document ids.
+
+    Same interface as the FAISS index it replaces: ``d``, ``ntotal``,
+    ``add_with_ids`` and ``search`` returning ``(scores, ids)`` arrays of
+    shape (n_queries, k), padded with score -inf and id -1 when k > ntotal.
+    Vectors are expected to be L2-normalised, so scores are cosine similarity.
+    """
+
+    def __init__(self, d: int):
+        if int(d) <= 0:
+            raise ValueError("dimension must be positive")
+        self.d = int(d)
+        self.vectors = np.zeros((0, self.d), dtype="float32")
+        self.ids = np.zeros(0, dtype="int64")
+
+    @property
+    def ntotal(self) -> int:
+        return int(self.ids.shape[0])
+
+    def add_with_ids(self, vectors: np.ndarray, ids: np.ndarray) -> None:
+        vectors = np.ascontiguousarray(vectors, dtype="float32")
+        ids = np.ascontiguousarray(ids, dtype="int64")
+        if vectors.ndim != 2 or vectors.shape[1] != self.d or ids.shape != (vectors.shape[0],):
+            raise ValueError("vectors must be (n, d) and ids (n,)")
+        self.vectors = np.concatenate([self.vectors, vectors])
+        self.ids = np.concatenate([self.ids, ids])
+
+    def reconstruct(self, document_id: int) -> np.ndarray:
+        """The stored vector for a document id (like FAISS ``IndexIDMap2.reconstruct``)."""
+        positions = np.flatnonzero(self.ids == int(document_id))
+        if positions.size == 0:
+            raise KeyError(f"document id {document_id} is not in the index")
+        return self.vectors[positions[0]].copy()
+
+    def search(self, queries: np.ndarray, k: int) -> tuple[np.ndarray, np.ndarray]:
+        queries = np.ascontiguousarray(queries, dtype="float32")
+        if queries.ndim != 2 or queries.shape[1] != self.d:
+            raise ValueError("queries must be (n, d)")
+        k = int(k)
+        scores = np.full((queries.shape[0], k), -np.inf, dtype="float32")
+        ids = np.full((queries.shape[0], k), -1, dtype="int64")
+        take = min(k, self.ntotal)
+        if take <= 0:
+            return scores, ids
+        similarity = queries @ self.vectors.T                     # (n_queries, ntotal)
+        for row, values in enumerate(similarity):
+            # Highest score first; ties keep insertion order (stable sort).
+            order = np.argsort(-values, kind="stable")[:take]
+            scores[row, :take] = values[order]
+            ids[row, :take] = self.ids[order]
+        return scores, ids
+
+
+def serialize_index(index: NumpyIndex) -> bytes:
+    buffer = io.BytesIO()
+    np.savez(buffer, ids=index.ids, vectors=index.vectors)
+    return buffer.getvalue()
+
+
+def deserialize_index(data: bytes) -> NumpyIndex:
+    """Load an index written by ``serialize_index``. Never unpickles anything."""
+    try:
+        with np.load(io.BytesIO(data), allow_pickle=False) as archive:
+            if set(archive.files) != {"ids", "vectors"}:
+                raise ValueError("unexpected arrays")
+            ids, vectors = archive["ids"], archive["vectors"]
+    except (ValueError, OSError, EOFError, KeyError, zipfile.BadZipFile) as exc:
+        raise IndexNotReadyError("Index file is unreadable; rebuild required") from exc
+    if (ids.dtype != np.int64 or vectors.dtype != np.float32 or ids.ndim != 1 or vectors.ndim != 2
+            or vectors.shape[0] != ids.shape[0] or vectors.shape[1] == 0
+            or not np.isfinite(vectors).all()):
+        raise IndexNotReadyError("Index file is invalid; rebuild required")
+    index = NumpyIndex(vectors.shape[1])
+    index.vectors, index.ids = np.ascontiguousarray(vectors), np.ascontiguousarray(ids)
+    return index
 
 
 # ============================================================
@@ -135,6 +224,7 @@ def load_index() -> LoadedIndex:
             return _cache
 
         if manifest["format_version"] != MANIFEST_FORMAT_VERSION:
+            # Includes indexes written by FAISS (format 1): they are never read.
             raise IndexNotReadyError("Unsupported index format; rebuild required")
 
         file_name = str(manifest["index_file"])
@@ -150,7 +240,7 @@ def load_index() -> LoadedIndex:
         if hashlib.sha256(data).hexdigest() != manifest["sha256"]:
             raise IndexNotReadyError("Index file checksum mismatch; rebuild required")
 
-        index = faiss.deserialize_index(np.frombuffer(data, dtype="uint8"))
+        index = deserialize_index(data)
 
         if index.ntotal != manifest["count"] or index.d != manifest["dimension"]:
             raise IndexNotReadyError("Index does not match its manifest; rebuild required")
@@ -274,14 +364,14 @@ def _rebuild_locked(embedder: Embedder) -> RebuildResult:
             db.rollback()
             raise VectorIndexError("Embedder returned vectors of unexpected shape")
 
-        # 3. Build the FAISS index (cosine similarity on unit vectors).
-        index = faiss.IndexIDMap2(faiss.IndexFlatIP(embedder.dimension))
+        # 3. Build the index (cosine similarity on unit vectors).
+        index = NumpyIndex(embedder.dimension)
         if ordered_docs:
             ids = np.array([d.document_id for d in ordered_docs], dtype="int64")
             index.add_with_ids(np.ascontiguousarray(vectors, dtype="float32"), ids)
 
-        data = faiss.serialize_index(index).tobytes()
-        index_file = f"internships-{uuid.uuid4().hex}.faiss"
+        data = serialize_index(index)
+        index_file = f"internships-{uuid.uuid4().hex}.npz"
         manifest = {
             "format_version": MANIFEST_FORMAT_VERSION,
             "index_file": index_file,
