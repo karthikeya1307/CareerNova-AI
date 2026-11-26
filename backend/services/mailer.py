@@ -6,7 +6,13 @@ Modes (``EMAIL_MODE``):
                          flows can be tested end to end. Status "outboxed".
     smtp               - send through the configured SMTP server. Only enable this when real
                          emails are authorised.
+    brevo              - send through the Brevo transactional email HTTPS API (port 443). Use this
+                         where SMTP ports are blocked (Render's free web services block 25/465/587).
+                         Needs BREVO_API_KEY and a MAIL_FROM address verified as a sender in Brevo.
     disabled           - nothing is sent or written. Status "skipped".
+
+Brevo settings: BREVO_API_KEY, MAIL_FROM (a verified Brevo sender), MAIL_FROM_NAME, SMTP_TIMEOUT_SECONDS
+(also used as the HTTPS timeout), FRONTEND_URL.
 
 SMTP settings (environment / .env):
     SMTP_HOST, SMTP_PORT (587), SMTP_SECURITY (starttls | ssl | none; default starttls,
@@ -22,12 +28,15 @@ recorded.
 from __future__ import annotations
 
 import html
+import json
 import logging
 import os
 import re
 import smtplib
 import socket
 import ssl
+import urllib.error
+import urllib.request
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -44,7 +53,8 @@ logger = logging.getLogger("careernova.email")
 
 PRODUCT = "CareerNova AI"
 TAGLINE = "Your Skills. Your Potential. Your Career."
-MODES = ("outbox", "smtp", "disabled")
+MODES = ("outbox", "smtp", "brevo", "disabled")
+BREVO_URL = "https://api.brevo.com/v3/smtp/email"
 SECURITY = ("starttls", "ssl", "none")
 PLACEHOLDER = re.compile(r"your[_-]|example\.(com|org)|changeme|placeholder", re.IGNORECASE)
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -67,6 +77,7 @@ class MailConfig:
     timeout: float
     frontend_url: str
     outbox_dir: Path
+    api_key: str | None = field(default=None, repr=False)
 
     @property
     def sender(self) -> str:
@@ -95,6 +106,7 @@ def load_config() -> MailConfig:
         timeout=timeout,
         frontend_url=(os.getenv("FRONTEND_URL") or "http://localhost:5173").strip().rstrip("/"),
         outbox_dir=outbox if outbox.is_absolute() else PROJECT_ROOT / outbox,
+        api_key=(os.getenv("BREVO_API_KEY") or "").strip() or None,
     )
 
 
@@ -128,11 +140,19 @@ def validate_config(config: MailConfig | None = None) -> dict:
                 and config.mail_from.lower() != config.username.lower():
             warnings.append("With Gmail, MAIL_FROM should be the signed-in address (or a verified alias); "
                             "otherwise Gmail rewrites or rejects the sender.")
+    if config.mode == "brevo":
+        if not config.api_key:
+            problems.append("BREVO_API_KEY is not set.")
+        if not config.mail_from or not EMAIL_RE.match(config.mail_from):
+            problems.append("MAIL_FROM must be a valid email address (a sender verified in Brevo).")
+        elif PLACEHOLDER.search(config.mail_from):
+            problems.append("MAIL_FROM still looks like a placeholder address.")
     if not config.frontend_url.startswith(("http://", "https://")):
         problems.append("FRONTEND_URL must start with http:// or https://.")
     return {"mode": config.mode, "ok": not problems, "problems": problems, "warnings": warnings,
             "host": config.host, "port": config.port, "security": config.security,
-            "sender_configured": bool(config.mail_from), "credentials_configured": bool(config.username and config.password),
+            "sender_configured": bool(config.mail_from),
+            "credentials_configured": bool(config.api_key) if config.mode == "brevo" else bool(config.username and config.password),
             "frontend_url": config.frontend_url}
 
 
@@ -239,7 +259,7 @@ class DeliveryResult:
 
     @property
     def delivered(self) -> bool:
-        """True only when an SMTP server accepted the message."""
+        """True only when an SMTP server or the email provider accepted the message."""
         return self.status == "sent"
 
     @property
@@ -282,8 +302,46 @@ def _smtp_send(config: MailConfig, message: EmailMessage) -> None:
             raise smtplib.SMTPRecipientsRefused(refused)
 
 
+class ProviderError(RuntimeError):
+    """An HTTPS email provider answered with an error (never carries the API key)."""
+
+    def __init__(self, status: int):
+        super().__init__(f"provider status {status}")
+        self.status = status
+
+
+def _brevo_send(config: MailConfig, to_email: str, rendered: Rendered) -> None:
+    """Send one message through Brevo's HTTPS API. Raises on anything but 2xx."""
+    body = json.dumps({
+        "sender": {"name": config.from_name, "email": config.mail_from},
+        "to": [{"email": to_email}],
+        "subject": rendered.subject,
+        "htmlContent": rendered.html,
+        "textContent": rendered.text,
+    }).encode("utf-8")
+    request = urllib.request.Request(BREVO_URL, data=body, method="POST", headers={
+        "api-key": config.api_key or "", "content-type": "application/json", "accept": "application/json"})
+    try:
+        with urllib.request.urlopen(request, timeout=config.timeout, context=ssl.create_default_context()) as response:
+            if not 200 <= response.status < 300:
+                raise ProviderError(response.status)
+    except urllib.error.HTTPError as exc:
+        raise ProviderError(exc.code) from None
+
+
 def classify(exc: BaseException) -> tuple[str, str]:
     """Map an exception to a stable error code and a safe description (never includes credentials)."""
+    if isinstance(exc, ProviderError):
+        if exc.status in (401, 403):
+            return "auth_failed", "The email provider rejected the API key (check BREVO_API_KEY and that the account is active)."
+        if exc.status == 400:
+            return "provider_rejected", ("The email provider rejected the message (check that MAIL_FROM is a verified "
+                                         "sender in Brevo and the recipient address is valid).")
+        if exc.status == 429:
+            return "rate_limited", "The email provider's sending limit was reached; try again later."
+        return "provider_error", f"The email provider returned an error (HTTP {exc.status})."
+    if isinstance(exc, urllib.error.URLError):
+        return "network_error", "Could not reach the email provider over HTTPS."
     if isinstance(exc, smtplib.SMTPAuthenticationError):
         return "auth_failed", "The SMTP server rejected the username or password (for Gmail use an app password)."
     if isinstance(exc, smtplib.SMTPNotSupportedError):
@@ -344,6 +402,13 @@ def deliver(kind: str, to_email: str, rendered: Rendered, *, user_id: int | None
             result = DeliveryResult("outboxed", None, "Saved to the local email outbox (not sent).")
         except OSError as exc:
             result = DeliveryResult("failed", "outbox_failed", f"Could not write the outbox file ({type(exc).__name__}).")
+    elif config.mode == "brevo":
+        try:
+            _brevo_send(config, to_email, rendered)
+            result = DeliveryResult("sent", None, "Accepted by the email provider (Brevo).")
+        except Exception as exc:  # classified below; never re-raised with secrets
+            code, detail = classify(exc)
+            result = DeliveryResult("failed", code, detail)
     else:
         try:
             _smtp_send(config, build_message(config, to_email, rendered))

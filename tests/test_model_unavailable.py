@@ -67,3 +67,15 @@ def test_semantic_search_reports_unavailable_and_matching_still_works(client, st
     assert search.status_code in (200, 503)                 # a clear answer, never a crash
     run = client.post(f"/matches/resumes/{student['resume_id']}?k=3", headers=student["headers"])
     assert run.status_code == 201 and run.json()["semantic_available"] is False
+
+
+def test_missing_model_is_reported_without_importing_pytorch(tmp_path, monkeypatch):
+    """On a small server (Render free: 512 MB) a missing model must not load PyTorch just to fail."""
+    import sys
+
+    from backend.services import embeddings
+
+    monkeypatch.setenv("EMBEDDING_CACHE_DIR", str(tmp_path / "no-model-here"))
+    monkeypatch.setitem(sys.modules, "sentence_transformers", None)    # any import attempt would fail loudly
+    with pytest.raises(embeddings.EmbeddingError, match="not downloaded"):
+        embeddings.SentenceTransformerEmbedder()

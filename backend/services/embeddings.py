@@ -130,11 +130,14 @@ class SentenceTransformerEmbedder:
         settings = embedding_settings()
         self.model_name = str(settings["model_name"])
         self.revision = str(settings["revision"])
+        # Find the model files BEFORE importing sentence-transformers: that import loads PyTorch (several
+        # hundred MB), which would exhaust a small server (e.g. 512 MB) just to report a missing model.
+        model_path = local_model_path()
 
         from sentence_transformers import SentenceTransformer
 
         self._model = SentenceTransformer(
-            str(local_model_path()),
+            str(model_path),
             device="cpu",
             local_files_only=True,
             trust_remote_code=False,

@@ -255,3 +255,88 @@ def test_email_check_send_test_in_outbox_mode(monkeypatch, tmp_path, capsys):
     assert manage.main(["email-check", "--send-test", "owner@example.com"]) == 0
     assert "Test message: outboxed" in capsys.readouterr().out
     assert list((tmp_path / "email_outbox").glob("*-test-*.eml"))
+
+
+# ---- Brevo HTTPS API mode (no network: urlopen is replaced) ---------------------------------------------
+BREVO_KEY = "xkeysib-test-not-a-real-key"
+
+
+class FakeResponse:
+    status = 201
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+@pytest.fixture
+def brevo(monkeypatch):
+    monkeypatch.setenv("EMAIL_MODE", "brevo")
+    monkeypatch.setenv("BREVO_API_KEY", BREVO_KEY)
+    monkeypatch.setenv("MAIL_FROM", "sender@mail.test")
+    monkeypatch.setenv("FRONTEND_URL", "https://careernova.test")
+    calls = []
+
+    def fake_urlopen(request, timeout=None, context=None):
+        calls.append({"url": request.full_url, "headers": dict(request.header_items()),
+                      "body": request.data, "timeout": timeout})
+        if calls_fail:
+            raise calls_fail[0]
+        return FakeResponse()
+
+    calls_fail = []
+    monkeypatch.setattr(mailer.urllib.request, "urlopen", fake_urlopen)
+    return calls, calls_fail
+
+
+def test_brevo_sends_over_https_with_the_api_key_header(brevo, db_session):
+    import json
+
+    calls, _ = brevo
+    rendered = mailer.render("verification", first_name="Asha", link="https://careernova.test/verify-email?token=t")
+    result = mailer.deliver("verification", "asha@mail.test", rendered)
+    assert result.status == "sent" and result.delivered and "Brevo" in result.detail
+    [call] = calls
+    assert call["url"] == "https://api.brevo.com/v3/smtp/email"
+    assert call["headers"]["Api-key"] == BREVO_KEY
+    body = json.loads(call["body"])
+    assert body["sender"]["email"] == "sender@mail.test" and body["to"] == [{"email": "asha@mail.test"}]
+    assert "Verify your email address" in body["subject"] and "verify-email?token=t" in body["htmlContent"]
+    record = db_session.scalar(select(EmailDelivery).where(EmailDelivery.delivery_id == result.delivery_id))
+    assert record.status == "sent"
+
+
+@pytest.mark.parametrize("status, code", [(401, "auth_failed"), (400, "provider_rejected"),
+                                          (429, "rate_limited"), (500, "provider_error")])
+def test_brevo_errors_are_classified_and_never_reported_as_sent(brevo, caplog, status, code):
+    import urllib.error
+
+    calls, fail = brevo
+    fail.append(urllib.error.HTTPError("https://api.brevo.com/v3/smtp/email", status, "error", {}, None))
+    with caplog.at_level(logging.INFO, logger="careernova.email"):
+        result = mailer.deliver("test", "asha@mail.test", mailer.render("test"))
+    assert result.status == "failed" and result.error_code == code and not result.accepted
+    assert BREVO_KEY not in (result.detail or "") and BREVO_KEY not in caplog.text
+
+
+def test_brevo_network_failure_is_reported(brevo):
+    import urllib.error
+
+    _, fail = brevo
+    fail.append(urllib.error.URLError("unreachable"))
+    result = mailer.deliver("test", "asha@mail.test", mailer.render("test"))
+    assert result.status == "failed" and result.error_code == "network_error"
+
+
+def test_brevo_configuration_is_validated_without_contacting_anyone(brevo, monkeypatch):
+    calls, _ = brevo
+    monkeypatch.setenv("BREVO_API_KEY", "")
+    monkeypatch.setenv("MAIL_FROM", "your_sender_gmail@gmail.com")
+    check = mailer.validate_config()
+    assert not check["ok"] and any("BREVO_API_KEY" in p for p in check["problems"])
+    assert any("placeholder" in p for p in check["problems"])
+    assert mailer.deliver("test", "asha@mail.test", mailer.render("test")).error_code == "config_invalid"
+    assert calls == []
+    assert BREVO_KEY not in repr(mailer.load_config())
